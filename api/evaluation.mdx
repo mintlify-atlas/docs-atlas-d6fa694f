@@ -1,0 +1,460 @@
+---
+title: 'JavaScript Evaluation'
+description: 'Execute JavaScript in browser pages'
+---
+
+## Overview
+
+The Evaluation API allows you to execute custom JavaScript in the context of a page. Use it to:
+
+- Extract data from the DOM
+- Modify page content
+- Check element states
+- Call JavaScript functions
+- Access window/document objects
+
+## Execute JavaScript
+
+```http
+POST /tabs/{id}/evaluate
+```
+
+<CodeGroup>
+```bash Get Title
+curl -X POST http://localhost:9867/tabs/tab_abc123/evaluate \
+  -H "Content-Type: application/json" \
+  -d '{"expression": "document.title"}'
+```
+
+```bash Count Links
+curl -X POST http://localhost:9867/tabs/tab_abc123/evaluate \
+  -H "Content-Type: application/json" \
+  -d '{"expression": "document.querySelectorAll(\"a\").length"}'
+```
+
+```python Python
+import requests
+
+# Get page title
+resp = requests.post(
+    "http://localhost:9867/tabs/tab_abc123/evaluate",
+    json={"expression": "document.title"}
+)
+result = resp.json()
+print(f"Title: {result['result']}")
+
+# Extract data
+resp = requests.post(
+    "http://localhost:9867/tabs/tab_abc123/evaluate",
+    json={"expression": "Array.from(document.querySelectorAll('h2')).map(h => h.textContent)"}
+)
+headings = resp.json()["result"]
+print(f"Headings: {headings}")
+```
+
+```javascript JavaScript
+// Get document state
+const resp = await fetch(
+  "http://localhost:9867/tabs/tab_abc123/evaluate",
+  {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({
+      expression: "document.readyState"
+    })
+  }
+);
+const result = await resp.json();
+console.log(`State: ${result.result}`);
+```
+</CodeGroup>
+
+### Request Body
+
+<ParamField path="expression" type="string" required>
+  JavaScript expression to evaluate
+</ParamField>
+
+### Response (200 OK)
+
+```json
+{
+  "result": "Example Domain"
+}
+```
+
+The `result` field contains the return value of the JavaScript expression.
+
+---
+
+## Examples
+
+### Get Page Title
+
+```bash
+curl -X POST http://localhost:9867/tabs/tab_abc123/evaluate \
+  -d '{"expression": "document.title"}'
+```
+
+Response:
+```json
+{
+  "result": "Example Domain"
+}
+```
+
+### Count Elements
+
+```bash
+curl -X POST http://localhost:9867/tabs/tab_abc123/evaluate \
+  -d '{"expression": "document.querySelectorAll(\"button\").length"}'
+```
+
+Response:
+```json
+{
+  "result": 5
+}
+```
+
+### Extract Text Content
+
+```bash
+curl -X POST http://localhost:9867/tabs/tab_abc123/evaluate \
+  -d '{"expression": "document.body.innerText"}'
+```
+
+Response:
+```json
+{
+  "result": "Example Domain\nThis domain is for use in illustrative examples..."
+}
+```
+
+### Get All Links
+
+```bash
+curl -X POST http://localhost:9867/tabs/tab_abc123/evaluate \
+  -d '{"expression": "Array.from(document.querySelectorAll(\"a\")).map(a => ({text: a.textContent, href: a.href}))"}'
+```
+
+Response:
+```json
+{
+  "result": [
+    {"text": "More information...", "href": "https://www.iana.org/domains/example"}
+  ]
+}
+```
+
+### Check Element Visibility
+
+```bash
+curl -X POST http://localhost:9867/tabs/tab_abc123/evaluate \
+  -d '{"expression": "document.querySelector(\"#element\").offsetHeight > 0"}'
+```
+
+Response:
+```json
+{
+  "result": true
+}
+```
+
+### Get Computed Styles
+
+```bash
+curl -X POST http://localhost:9867/tabs/tab_abc123/evaluate \
+  -d '{"expression": "getComputedStyle(document.querySelector(\"h1\")).color"}'
+```
+
+Response:
+```json
+{
+  "result": "rgb(0, 0, 0)"
+}
+```
+
+### Get Local Storage
+
+```bash
+curl -X POST http://localhost:9867/tabs/tab_abc123/evaluate \
+  -d '{"expression": "JSON.stringify(localStorage)"}'
+```
+
+Response:
+```json
+{
+  "result": "{\"key\":\"value\"}"
+}
+```
+
+### Set Local Storage
+
+```bash
+curl -X POST http://localhost:9867/tabs/tab_abc123/evaluate \
+  -d '{"expression": "localStorage.setItem(\"key\", \"value\")"}'
+```
+
+---
+
+## Data Extraction Example
+
+```python
+import requests
+
+BASE = "http://localhost:9867"
+tab_id = "tab_abc123"
+
+# Navigate to page
+requests.post(f"{BASE}/tabs/{tab_id}/navigate",
+    json={"url": "https://news.ycombinator.com"})
+
+# Extract all story titles
+resp = requests.post(f"{BASE}/tabs/{tab_id}/evaluate", json={
+    "expression": """
+        Array.from(document.querySelectorAll('.titleline > a'))
+            .map(a => ({
+                title: a.textContent,
+                url: a.href
+            }))
+    """
+})
+
+stories = resp.json()["result"]
+
+print(f"Found {len(stories)} stories:\n")
+for i, story in enumerate(stories[:10], 1):
+    print(f"{i}. {story['title']}")
+    print(f"   {story['url']}\n")
+```
+
+---
+
+## Complex Evaluation Example
+
+```javascript
+const BASE = "http://localhost:9867";
+const tabId = "tab_abc123";
+
+// Extract product data from e-commerce page
+const resp = await fetch(`${BASE}/tabs/${tabId}/evaluate`, {
+  method: "POST",
+  headers: { "Content-Type": "application/json" },
+  body: JSON.stringify({
+    expression: `
+      {
+        title: document.querySelector('h1.product-title')?.textContent,
+        price: document.querySelector('.price')?.textContent,
+        inStock: document.querySelector('.in-stock') !== null,
+        rating: parseFloat(document.querySelector('.rating')?.textContent),
+        images: Array.from(document.querySelectorAll('.product-image img'))
+                     .map(img => img.src),
+        description: document.querySelector('.description')?.textContent.trim()
+      }
+    `
+  })
+});
+
+const product = (await resp.json()).result;
+console.log(product);
+```
+
+---
+
+## Error Handling
+
+### JavaScript Error (500)
+
+```bash
+curl -X POST http://localhost:9867/tabs/tab_abc123/evaluate \
+  -d '{"expression": "nonexistent.property"}'
+```
+
+**Response:**
+```json
+{
+  "error": "evaluate: ReferenceError: nonexistent is not defined",
+  "statusCode": 500
+}
+```
+
+### Syntax Error (400)
+
+```bash
+curl -X POST http://localhost:9867/tabs/tab_abc123/evaluate \
+  -d '{"expression": "document.querySelector("}'
+```
+
+**Response:**
+```json
+{
+  "error": "invalid expression syntax",
+  "statusCode": 400
+}
+```
+
+### Tab Not Found (404)
+
+```bash
+curl -X POST http://localhost:9867/tabs/nonexistent/evaluate \
+  -d '{"expression": "document.title"}'
+```
+
+**Response:**
+```json
+{
+  "error": "tab not found",
+  "statusCode": 404
+}
+```
+
+---
+
+## Best Practices
+
+### Return Simple Data Types
+
+JavaScript objects are serialized to JSON. Stick to simple types:
+
+```bash
+# ✅ Good: Returns array of strings
+curl -X POST $BASE/tabs/$TAB/evaluate \
+  -d '{"expression": "Array.from(document.querySelectorAll(\"h2\")).map(h => h.textContent)"}'
+
+# ❌ Bad: Returns DOM nodes (can't serialize)
+curl -X POST $BASE/tabs/$TAB/evaluate \
+  -d '{"expression": "document.querySelectorAll(\"h2\")"}'
+```
+
+### Use JSON.stringify for Objects
+
+```bash
+curl -X POST http://localhost:9867/tabs/tab_abc123/evaluate \
+  -d '{"expression": "JSON.stringify({title: document.title, url: location.href})"}'
+```
+
+Then parse on the client side:
+
+```python
+resp = requests.post(f"{BASE}/tabs/{tab_id}/evaluate",
+    json={"expression": "JSON.stringify({title: document.title, url: location.href})"})
+
+data = json.loads(resp.json()["result"])
+print(data["title"])
+```
+
+### Handle Null/Undefined
+
+```javascript
+// Use optional chaining and defaults
+const expression = `
+  {
+    title: document.querySelector('h1')?.textContent || 'No title',
+    price: document.querySelector('.price')?.textContent || 'N/A'
+  }
+`;
+```
+
+### Extract Complex Data
+
+```python
+# Extract table data
+expression = """
+Array.from(document.querySelectorAll('table tr')).map(row => 
+  Array.from(row.querySelectorAll('td')).map(cell => cell.textContent.trim())
+)
+"""
+
+resp = requests.post(f"{BASE}/tabs/{tab_id}/evaluate",
+    json={"expression": expression})
+
+table_data = resp.json()["result"]
+```
+
+---
+
+## Use Cases
+
+### Check Login State
+
+```python
+# Check if user is logged in
+resp = requests.post(f"{BASE}/tabs/{tab_id}/evaluate", json={
+    "expression": "document.querySelector('.logout-button') !== null"
+})
+is_logged_in = resp.json()["result"]
+```
+
+### Wait for Element
+
+```python
+import time
+
+# Poll for element to appear
+for _ in range(10):
+    resp = requests.post(f"{BASE}/tabs/{tab_id}/evaluate", json={
+        "expression": "document.querySelector('#result') !== null"
+    })
+    if resp.json()["result"]:
+        break
+    time.sleep(0.5)
+```
+
+### Modify Page Content
+
+```bash
+# Hide ads
+curl -X POST http://localhost:9867/tabs/tab_abc123/evaluate \
+  -d '{"expression": "document.querySelectorAll(\".ad\").forEach(el => el.style.display = \"none\")"}'
+
+# Change page title
+curl -X POST http://localhost:9867/tabs/tab_abc123/evaluate \
+  -d '{"expression": "document.title = \"New Title\""}'
+```
+
+### Get Form Values
+
+```python
+# Get all form input values
+resp = requests.post(f"{BASE}/tabs/{tab_id}/evaluate", json={
+    "expression": """
+        Object.fromEntries(
+            Array.from(document.querySelectorAll('input, select, textarea'))
+                .map(el => [el.name || el.id, el.value])
+                .filter(([name]) => name)
+        )
+    """
+})
+form_data = resp.json()["result"]
+```
+
+---
+
+## Limitations
+
+<Warning>
+- Cannot return DOM nodes or functions (must serialize to JSON)
+- Long-running scripts may timeout
+- Page must be fully loaded before evaluation
+- Cross-origin restrictions apply (same as browser)
+</Warning>
+
+---
+
+## Next Steps
+
+<CardGroup cols={2}>
+  <Card title="Snapshot API" icon="camera" href="/api/snapshot">
+    Get structured page data
+  </Card>
+  <Card title="Actions API" icon="hand-pointer" href="/api/actions">
+    Interact with page elements
+  </Card>
+  <Card title="Navigation" icon="compass" href="/api/navigation">
+    Navigate before evaluation
+  </Card>
+  <Card title="Cookies" icon="cookie" href="/api/cookies">
+    Manage cookies and storage
+  </Card>
+</CardGroup>

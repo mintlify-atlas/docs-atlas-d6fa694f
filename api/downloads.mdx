@@ -1,0 +1,626 @@
+---
+title: 'Downloads API'
+description: 'Handle file downloads and uploads'
+---
+
+## Overview
+
+The Downloads API provides endpoints for:
+
+- Triggering and monitoring file downloads
+- Uploading files to the browser
+- Managing download state
+- Retrieving downloaded files
+
+<Note>
+Downloads are initiated by user actions (clicking download links) or triggered programmatically via JavaScript evaluation.
+</Note>
+
+## Download File
+
+Trigger a file download from a tab.
+
+```http
+GET /tabs/{id}/download
+```
+
+<CodeGroup>
+```bash cURL
+curl "http://localhost:9867/tabs/tab_abc123/download?url=https://example.com/file.pdf" > file.pdf
+```
+
+```python Python
+import requests
+
+# Download file
+resp = requests.get(
+    "http://localhost:9867/tabs/tab_abc123/download",
+    params={"url": "https://example.com/file.pdf"}
+)
+
+# Save to disk
+with open("file.pdf", "wb") as f:
+    f.write(resp.content)
+
+print(f"Downloaded {len(resp.content)} bytes")
+```
+
+```javascript JavaScript
+// Download file
+const resp = await fetch(
+  "http://localhost:9867/tabs/tab_abc123/download?url=https://example.com/file.pdf"
+);
+const blob = await resp.blob();
+
+// Save (in browser context)
+const url = URL.createObjectURL(blob);
+const a = document.createElement('a');
+a.href = url;
+a.download = 'file.pdf';
+a.click();
+```
+</CodeGroup>
+
+### Query Parameters
+
+<ParamField query="url" type="string" required>
+  URL of the file to download
+</ParamField>
+
+<ParamField query="filename" type="string">
+  Suggested filename (optional, defaults from URL or Content-Disposition header)
+</ParamField>
+
+<ParamField query="timeout" type="integer" default="60">
+  Download timeout in seconds
+</ParamField>
+
+### Response
+
+Returns file binary data with appropriate `Content-Type` and `Content-Disposition` headers.
+
+---
+
+## Upload File
+
+Upload a file to a file input element in the browser.
+
+```http
+POST /tabs/{id}/upload
+```
+
+<CodeGroup>
+```bash cURL
+curl -X POST http://localhost:9867/tabs/tab_abc123/upload \
+  -F "file=@/path/to/local/file.pdf" \
+  -F "selector=#file-input"
+```
+
+```python Python
+import requests
+
+# Upload file to input element
+files = {"file": open("document.pdf", "rb")}
+data = {"selector": "#file-input"}
+
+resp = requests.post(
+    "http://localhost:9867/tabs/tab_abc123/upload",
+    files=files,
+    data=data
+)
+
+result = resp.json()
+print(f"Upload successful: {result['success']}")
+print(f"Filename: {result['filename']}")
+```
+
+```javascript JavaScript
+// Upload file using FormData
+const formData = new FormData();
+formData.append('file', fileInput.files[0]);
+formData.append('selector', '#file-input');
+
+const resp = await fetch(
+  "http://localhost:9867/tabs/tab_abc123/upload",
+  {
+    method: "POST",
+    body: formData
+  }
+);
+
+const result = await resp.json();
+console.log(`Uploaded: ${result.filename}`);
+```
+</CodeGroup>
+
+### Form Data
+
+<ParamField path="file" type="file" required>
+  File to upload (multipart/form-data)
+</ParamField>
+
+<ParamField path="selector" type="string" required>
+  CSS selector for file input element
+</ParamField>
+
+<ParamField path="ref" type="string">
+  Element reference from snapshot (alternative to selector)
+</ParamField>
+
+### Response (200 OK)
+
+```json
+{
+  "success": true,
+  "filename": "document.pdf",
+  "size": 125678,
+  "selector": "#file-input"
+}
+```
+
+---
+
+## Download via Click
+
+Trigger downloads by clicking download links:
+
+```python
+import requests
+import time
+
+BASE = "http://localhost:9867"
+tab_id = "tab_abc123"
+
+# Navigate to page with download link
+requests.post(f"{BASE}/tabs/{tab_id}/navigate",
+    json={"url": "https://example.com/downloads"})
+
+time.sleep(2)
+
+# Get page structure
+snapshot = requests.get(
+    f"{BASE}/tabs/{tab_id}/snapshot?filter=interactive"
+).json()
+
+# Find download link
+download_ref = None
+for node in snapshot["nodes"]:
+    if "download" in node.get("name", "").lower():
+        download_ref = node["ref"]
+        break
+
+if download_ref:
+    # Click download link
+    requests.post(f"{BASE}/tabs/{tab_id}/action",
+        json={"kind": "click", "ref": download_ref})
+    
+    print("Download initiated via click")
+    
+    # Give download time to start
+    time.sleep(2)
+    
+    # Download may save to profile's download directory
+```
+
+---
+
+## Programmatic Download
+
+Trigger downloads via JavaScript:
+
+```python
+import requests
+import base64
+
+BASE = "http://localhost:9867"
+tab_id = "tab_abc123"
+
+# Generate download via JavaScript
+resp = requests.post(f"{BASE}/tabs/{tab_id}/evaluate", json={
+    "expression": """
+        (function() {
+            const text = "Hello, World!";
+            const blob = new Blob([text], { type: 'text/plain' });
+            const url = URL.createObjectURL(blob);
+            
+            const a = document.createElement('a');
+            a.href = url;
+            a.download = 'hello.txt';
+            document.body.appendChild(a);
+            a.click();
+            document.body.removeChild(a);
+            URL.revokeObjectURL(url);
+            
+            return 'Download triggered';
+        })()
+    """
+})
+
+print(resp.json()["result"])
+```
+
+---
+
+## Upload to Form Example
+
+```python
+import requests
+import time
+
+BASE = "http://localhost:9867"
+
+# Start instance
+inst = requests.post(f"{BASE}/instances/start",
+    json={"mode": "headed"}).json()
+
+# Open tab with upload form
+tab = requests.post(f"{BASE}/instances/{inst['id']}/tabs/open",
+    json={"url": "https://example.com/upload-form"}).json()
+
+tab_id = tab["tabId"]
+time.sleep(2)
+
+# Get form structure
+snapshot = requests.get(
+    f"{BASE}/tabs/{tab_id}/snapshot?filter=interactive"
+).json()
+
+# Find file input
+file_input_ref = None
+for node in snapshot["nodes"]:
+    if node.get("role") == "textbox" and "file" in node.get("name", "").lower():
+        file_input_ref = node["ref"]
+        break
+
+if file_input_ref:
+    # Upload file
+    files = {"file": open("document.pdf", "rb")}
+    data = {"ref": file_input_ref}
+    
+    resp = requests.post(
+        f"{BASE}/tabs/{tab_id}/upload",
+        files=files,
+        data=data
+    )
+    
+    result = resp.json()
+    print(f"Uploaded: {result['filename']}")
+    
+    # Find submit button
+    submit_ref = None
+    for node in snapshot["nodes"]:
+        if node.get("role") == "button" and "submit" in node.get("name", "").lower():
+            submit_ref = node["ref"]
+            break
+    
+    if submit_ref:
+        # Submit form
+        requests.post(f"{BASE}/tabs/{tab_id}/action",
+            json={"kind": "click", "ref": submit_ref})
+        
+        print("Form submitted")
+
+# Cleanup
+requests.post(f"{BASE}/instances/{inst['id']}/stop")
+```
+
+---
+
+## Bulk Download Example
+
+```python
+import requests
+import os
+
+BASE = "http://localhost:9867"
+tab_id = "tab_abc123"
+
+download_urls = [
+    "https://example.com/file1.pdf",
+    "https://example.com/file2.pdf",
+    "https://example.com/file3.pdf"
+]
+
+os.makedirs("downloads", exist_ok=True)
+
+for url in download_urls:
+    filename = url.split("/")[-1]
+    
+    print(f"Downloading {filename}...")
+    
+    resp = requests.get(
+        f"{BASE}/tabs/{tab_id}/download",
+        params={"url": url}
+    )
+    
+    filepath = os.path.join("downloads", filename)
+    with open(filepath, "wb") as f:
+        f.write(resp.content)
+    
+    print(f"  Saved to {filepath} ({len(resp.content)} bytes)")
+
+print(f"\nDownloaded {len(download_urls)} files")
+```
+
+---
+
+## Upload Multiple Files
+
+```python
+import requests
+
+BASE = "http://localhost:9867"
+tab_id = "tab_abc123"
+
+files_to_upload = [
+    ("document1.pdf", "#file-input-1"),
+    ("document2.pdf", "#file-input-2"),
+    ("image.jpg", "#file-input-3")
+]
+
+for filepath, selector in files_to_upload:
+    print(f"Uploading {filepath}...")
+    
+    files = {"file": open(filepath, "rb")}
+    data = {"selector": selector}
+    
+    resp = requests.post(
+        f"{BASE}/tabs/{tab_id}/upload",
+        files=files,
+        data=data
+    )
+    
+    result = resp.json()
+    if result["success"]:
+        print(f"  ✓ Uploaded {result['filename']}")
+    else:
+        print(f"  ✗ Failed to upload")
+
+print("All files uploaded")
+```
+
+---
+
+## Error Handling
+
+### Tab Not Found (404)
+
+```bash
+curl "http://localhost:9867/tabs/nonexistent/download?url=https://example.com/file.pdf"
+```
+
+**Response:**
+```json
+{
+  "error": "tab not found",
+  "statusCode": 404
+}
+```
+
+### Download Timeout (500)
+
+```bash
+curl "http://localhost:9867/tabs/tab_abc123/download?url=https://slow-server.com/large-file.zip&timeout=5"
+```
+
+**Response:**
+```json
+{
+  "error": "download timeout after 5 seconds",
+  "statusCode": 500
+}
+```
+
+### Invalid File Input (400)
+
+```bash
+curl -X POST http://localhost:9867/tabs/tab_abc123/upload \
+  -F "file=@document.pdf" \
+  -F "selector=#nonexistent"
+```
+
+**Response:**
+```json
+{
+  "error": "file input not found: #nonexistent",
+  "statusCode": 400
+}
+```
+
+---
+
+## Best Practices
+
+### Set Appropriate Timeouts
+
+```python
+# For large files, increase timeout
+resp = requests.get(
+    f"{BASE}/tabs/{tab_id}/download",
+    params={
+        "url": "https://example.com/large-file.zip",
+        "timeout": 300  # 5 minutes
+    }
+)
+```
+
+### Check File Size
+
+```python
+resp = requests.get(
+    f"{BASE}/tabs/{tab_id}/download",
+    params={"url": url},
+    stream=True
+)
+
+# Check Content-Length header
+file_size = int(resp.headers.get('Content-Length', 0))
+print(f"File size: {file_size / 1024 / 1024:.2f}MB")
+
+# Stream download for large files
+with open("large_file.zip", "wb") as f:
+    for chunk in resp.iter_content(chunk_size=8192):
+        f.write(chunk)
+```
+
+### Validate Upload Success
+
+```python
+# Upload file
+resp = requests.post(
+    f"{BASE}/tabs/{tab_id}/upload",
+    files={"file": open("document.pdf", "rb")},
+    data={"selector": "#file-input"}
+)
+
+result = resp.json()
+
+if not result["success"]:
+    raise Exception("Upload failed")
+
+# Verify via JavaScript
+verify = requests.post(f"{BASE}/tabs/{tab_id}/evaluate", json={
+    "expression": "document.querySelector('#file-input').files.length > 0"
+})
+
+if verify.json()["result"]:
+    print("File successfully attached to input")
+```
+
+### Handle Download Directories
+
+```python
+import os
+
+# Create organized download structure
+def download_organized(tab_id, url, category):
+    download_dir = os.path.join("downloads", category)
+    os.makedirs(download_dir, exist_ok=True)
+    
+    filename = url.split("/")[-1]
+    filepath = os.path.join(download_dir, filename)
+    
+    resp = requests.get(
+        f"http://localhost:9867/tabs/{tab_id}/download",
+        params={"url": url}
+    )
+    
+    with open(filepath, "wb") as f:
+        f.write(resp.content)
+    
+    return filepath
+
+# Usage
+pdf_path = download_organized(tab_id, "https://example.com/doc.pdf", "pdfs")
+image_path = download_organized(tab_id, "https://example.com/img.jpg", "images")
+```
+
+---
+
+## Use Cases
+
+### Automated Report Downloads
+
+```python
+# Login and download reports
+def download_monthly_reports(tab_id):
+    # Navigate to reports page
+    requests.post(f"{BASE}/tabs/{tab_id}/navigate",
+        json={"url": "https://example.com/reports"})
+    
+    time.sleep(2)
+    
+    # Get download links
+    snapshot = requests.get(
+        f"{BASE}/tabs/{tab_id}/snapshot?filter=interactive"
+    ).json()
+    
+    # Download each report
+    for node in snapshot["nodes"]:
+        if "report" in node.get("name", "").lower() and node.get("role") == "link":
+            # Click download link
+            requests.post(f"{BASE}/tabs/{tab_id}/action",
+                json={"kind": "click", "ref": node["ref"]})
+            
+            time.sleep(1)
+
+download_monthly_reports(tab_id)
+```
+
+### Bulk File Uploads
+
+```python
+# Upload multiple files to form
+def upload_batch(tab_id, files_dir):
+    import glob
+    
+    files = glob.glob(os.path.join(files_dir, "*.pdf"))
+    
+    for filepath in files:
+        print(f"Uploading {os.path.basename(filepath)}...")
+        
+        resp = requests.post(
+            f"{BASE}/tabs/{tab_id}/upload",
+            files={"file": open(filepath, "rb")},
+            data={"selector": "#file-input"}
+        )
+        
+        if resp.json()["success"]:
+            # Click upload button
+            requests.post(f"{BASE}/tabs/{tab_id}/action",
+                json={"kind": "click", "ref": "upload_btn"})
+            
+            time.sleep(2)
+
+upload_batch(tab_id, "documents/")
+```
+
+### Download with Authentication
+
+```python
+# Download protected files
+def download_authenticated(tab_id, url, cookies):
+    # Set cookies first
+    requests.post(f"{BASE}/tabs/{tab_id}/cookies", json={
+        "url": url,
+        "cookies": cookies
+    })
+    
+    # Then download
+    resp = requests.get(
+        f"{BASE}/tabs/{tab_id}/download",
+        params={"url": url}
+    )
+    
+    return resp.content
+
+# Usage
+session_cookies = [
+    {"name": "session_id", "value": "abc123"}
+]
+
+file_data = download_authenticated(
+    tab_id,
+    "https://example.com/protected/file.pdf",
+    session_cookies
+)
+```
+
+---
+
+## Next Steps
+
+<CardGroup cols={2}>
+  <Card title="Cookies API" icon="cookie" href="/api/cookies">
+    Manage authentication cookies
+  </Card>
+  <Card title="Actions API" icon="hand-pointer" href="/api/actions">
+    Click download links
+  </Card>
+  <Card title="Navigation" icon="compass" href="/api/navigation">
+    Navigate to download pages
+  </Card>
+  <Card title="Evaluation" icon="code" href="/api/evaluation">
+    Trigger downloads via JavaScript
+  </Card>
+</CardGroup>

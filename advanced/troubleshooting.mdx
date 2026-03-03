@@ -1,0 +1,633 @@
+---
+title: Troubleshooting
+description: Common issues and solutions for PinchTab
+icon: wrench
+---
+
+This guide covers common issues you might encounter when using PinchTab and how to resolve them.
+
+## Installation Issues
+
+<Accordion title="Command not found: pinchtab">
+**Problem:** Shell can't find the `pinchtab` command after installation.
+
+**Solution:**
+
+Check if the binary is in your PATH:
+```bash
+which pinchtab
+```
+
+If not found, add the installation directory to your PATH:
+
+<CodeGroup>
+```bash macOS/Linux (bash)
+echo 'export PATH="$HOME/.pinchtab/bin:$PATH"' >> ~/.bashrc
+source ~/.bashrc
+```
+
+```bash macOS/Linux (zsh)
+echo 'export PATH="$HOME/.pinchtab/bin:$PATH"' >> ~/.zshrc
+source ~/.zshrc
+```
+</CodeGroup>
+
+Or use the full path:
+```bash
+~/.pinchtab/bin/pinchtab
+```
+</Accordion>
+
+<Accordion title="Chrome not found">
+**Problem:** PinchTab can't locate Chrome/Chromium.
+
+```
+ERROR: Chrome binary not found
+```
+
+**Solution:**
+
+Install Chrome or Chromium:
+
+<CodeGroup>
+```bash macOS
+brew install --cask google-chrome
+```
+
+```bash Ubuntu/Debian
+sudo apt-get update
+sudo apt-get install -y chromium-browser
+```
+
+```bash Fedora/RHEL
+sudo dnf install chromium
+```
+</CodeGroup>
+
+Or specify the Chrome binary path:
+```bash
+export CHROME_BIN=/path/to/chrome
+pinchtab
+```
+</Accordion>
+
+## Connection Issues
+
+<Accordion title="Connection refused (port 9867)">
+**Problem:** Can't connect to PinchTab server.
+
+```bash
+curl http://localhost:9867/health
+# curl: (7) Failed to connect to localhost port 9867: Connection refused
+```
+
+**Solutions:**
+
+1. **Check if PinchTab is running:**
+   ```bash
+   ps aux | grep pinchtab
+   ```
+
+2. **Check if port is already in use:**
+   ```bash
+   lsof -i :9867
+   ```
+   
+   If another process is using it, either stop that process or change PinchTab's port:
+   ```bash
+   export BRIDGE_PORT=9999
+   pinchtab
+   ```
+
+3. **Check firewall settings:**
+   ```bash
+   # macOS
+   sudo /usr/libexec/ApplicationFirewall/socketfilterfw --getglobalstate
+   
+   # Linux (ufw)
+   sudo ufw status
+   ```
+</Accordion>
+
+<Accordion title="CDP connection failed">
+**Problem:** Can't connect to remote Chrome via CDP_URL.
+
+```
+ERROR: Failed to connect to CDP URL: connection refused
+```
+
+**Solutions:**
+
+1. **Verify Chrome is running with remote debugging:**
+   ```bash
+   curl http://localhost:9222/json/version
+   ```
+   
+   If this fails, start Chrome with debugging enabled:
+   ```bash
+   google-chrome --remote-debugging-port=9222 &
+   ```
+
+2. **Check the CDP_URL format:**
+   ```bash
+   # ✅ Correct
+   export CDP_URL="ws://localhost:9222/devtools/browser/abc123..."
+   
+   # ❌ Wrong (http instead of ws)
+   export CDP_URL="http://localhost:9222/devtools/browser/abc123..."
+   ```
+
+3. **Get the correct CDP_URL:**
+   ```bash
+   curl -s http://localhost:9222/json/version | jq -r '.webSocketDebuggerUrl'
+   ```
+</Accordion>
+
+## Chrome Launch Issues
+
+<Accordion title="Chrome crashes on startup">
+**Problem:** Chrome crashes immediately after launch.
+
+**Solutions:**
+
+1. **Check Chrome version compatibility:**
+   ```bash
+   google-chrome --version
+   ```
+   
+   PinchTab requires Chrome 90+.
+
+2. **Try with additional flags (especially in Docker):**
+   ```bash
+   export CHROME_FLAGS="--no-sandbox --disable-dev-shm-usage --disable-gpu"
+   pinchtab
+   ```
+
+3. **Clear profile directory:**
+   ```bash
+   rm -rf ~/.pinchtab/chrome-profile
+   pinchtab
+   ```
+
+4. **Check available memory:**
+   ```bash
+   free -h
+   ```
+   
+   Chrome requires at least 512MB RAM. If low on memory, try headless mode:
+   ```bash
+   export BRIDGE_HEADLESS=true
+   ```
+</Accordion>
+
+<Accordion title="Invalid memory address error">
+**Problem:** Crash with "invalid memory address" error.
+
+```
+panic: runtime error: invalid memory address or nil pointer dereference
+```
+
+**Solutions:**
+
+1. **Ensure Chrome has at least one window/tab:**
+   ```bash
+   google-chrome --remote-debugging-port=9222 --new-window &
+   ```
+
+2. **Clear state and restart:**
+   ```bash
+   rm -rf ~/.pinchtab/state
+   pinchtab
+   ```
+
+3. **Use fresh start:**
+   ```bash
+   export BRIDGE_NO_RESTORE=true
+   pinchtab
+   ```
+</Accordion>
+
+<Accordion title="Chrome zombie processes">
+**Problem:** Chrome processes remain after PinchTab exits.
+
+**Solution:**
+
+Kill orphaned Chrome processes:
+```bash
+# Kill all PinchTab-managed Chrome instances
+pkill -f "Chrome.*user-data-dir.*\.pinchtab"
+
+# Or more aggressively (kills ALL Chrome)
+pkill chrome
+```
+
+To prevent this, always shut down PinchTab gracefully:
+```bash
+# Send SIGTERM (not SIGKILL)
+kill <pinchtab-pid>
+
+# Or use Ctrl+C in the terminal running PinchTab
+```
+</Accordion>
+
+## Runtime Issues
+
+<Accordion title="Navigation timeout">
+**Problem:** Page navigation takes too long and times out.
+
+```
+ERROR: Navigation timeout after 60s
+```
+
+**Solutions:**
+
+1. **Increase navigation timeout:**
+   ```bash
+   export BRIDGE_NAV_TIMEOUT=120
+   ```
+
+2. **Check network connectivity:**
+   ```bash
+   curl -I https://example.com
+   ```
+
+3. **Block heavy resources to speed up loading:**
+   ```bash
+   export BRIDGE_BLOCK_IMAGES=true
+   export BRIDGE_BLOCK_MEDIA=true
+   export BRIDGE_NO_ANIMATIONS=true
+   ```
+</Accordion>
+
+<Accordion title="Tab limit reached">
+**Problem:** Can't create more tabs.
+
+```
+ERROR: Maximum tab limit reached (20)
+```
+
+**Solutions:**
+
+1. **Close unused tabs:**
+   ```bash
+   # List tabs
+   curl http://localhost:9867/tabs
+   
+   # Close specific tab
+   curl -X DELETE http://localhost:9867/tabs/<tab-id>
+   ```
+
+2. **Increase tab limit:**
+   ```bash
+   export BRIDGE_MAX_TABS=50
+   pinchtab
+   ```
+
+<Warning>
+Too many tabs can cause high memory usage and slower performance.
+</Warning>
+</Accordion>
+
+<Accordion title="High memory usage">
+**Problem:** PinchTab/Chrome consuming too much memory.
+
+**Solutions:**
+
+1. **Reduce max tabs:**
+   ```bash
+   export BRIDGE_MAX_TABS=5
+   ```
+
+2. **Block heavy content:**
+   ```bash
+   export BRIDGE_BLOCK_IMAGES=true
+   export BRIDGE_BLOCK_MEDIA=true
+   ```
+
+3. **Use headless mode:**
+   ```bash
+   export BRIDGE_HEADLESS=true
+   ```
+
+4. **Close idle tabs programmatically:**
+   ```bash
+   # Get all tabs
+   TABS=$(curl -s http://localhost:9867/tabs | jq -r '.[].id')
+   
+   # Close each tab
+   for tab in $TABS; do
+     curl -X DELETE http://localhost:9867/tabs/$tab
+   done
+   ```
+
+5. **Monitor memory usage:**
+   ```bash
+   # Linux
+   ps aux | grep -E '(pinchtab|chrome)' | awk '{sum+=$6} END {print sum/1024 " MB"}'
+   
+   # macOS
+   ps aux | grep -E '(pinchtab|chrome)' | awk '{sum+=$6} END {print sum " MB"}'
+   ```
+</Accordion>
+
+## Testing Issues
+
+<Accordion title="Tests failing with timeout">
+**Problem:** Integration tests timing out.
+
+**Solution:**
+
+Increase test timeout:
+```bash
+go test -tags integration ./tests/integration -timeout 300s
+```
+
+Or run tests with verbose output to see where it hangs:
+```bash
+go test -v -tags integration ./tests/integration -timeout 300s
+```
+</Accordion>
+
+<Accordion title="Pre-commit hooks failing">
+**Problem:** Git commit blocked by pre-commit hooks.
+
+```
+gofmt............................................Failed
+```
+
+**Solutions:**
+
+1. **Install pre-commit:**
+   ```bash
+   pip install pre-commit
+   # or
+   brew install pre-commit
+   ```
+
+2. **Setup hooks:**
+   ```bash
+   pre-commit install
+   ```
+
+3. **Format code:**
+   ```bash
+   gofmt -w .
+   ```
+
+4. **Run hooks manually:**
+   ```bash
+   pre-commit run --all-files
+   ```
+
+5. **Update hooks:**
+   ```bash
+   pre-commit autoupdate
+   ```
+</Accordion>
+
+## Docker/Container Issues
+
+<Accordion title="Chrome won't start in Docker">
+**Problem:** Chrome fails to start in containerized environment.
+
+**Solution:**
+
+Use required Chrome flags for containers:
+```dockerfile
+ENV CHROME_FLAGS="--no-sandbox --disable-dev-shm-usage --disable-gpu"
+```
+
+Or in docker-compose:
+```yaml
+environment:
+  CHROME_FLAGS: "--no-sandbox --disable-dev-shm-usage --disable-gpu"
+shm_size: 2gb
+```
+
+**Explanation:**
+- `--no-sandbox`: Required in most Docker setups (no kernel sandboxing)
+- `--disable-dev-shm-usage`: Fixes `/dev/shm` size issues
+- `--disable-gpu`: Containers often lack GPU access
+- `shm_size: 2gb`: Increases shared memory (fixes crashes)
+</Accordion>
+
+<Accordion title="Port conflicts in Docker">
+**Problem:** Port 9867 already in use on host.
+
+**Solution:**
+
+Map to a different host port:
+```bash
+docker run -p 8080:9867 pinchtab/pinchtab
+# Access via http://localhost:8080
+```
+
+Or change PinchTab's port:
+```bash
+docker run -e BRIDGE_PORT=8080 -p 8080:8080 pinchtab/pinchtab
+```
+</Accordion>
+
+## Instance/Profile Issues
+
+<Accordion title="Instance won't start">
+**Problem:** Instance creation fails or hangs.
+
+**Solution:**
+
+1. **Check available ports:**
+   ```bash
+   # See what's using instance ports
+   lsof -i :9868-9968
+   ```
+
+2. **Check instance limit:**
+   ```bash
+   curl http://localhost:9867/instances | jq length
+   ```
+   
+   Default limit is 100 instances (ports 9868-9968).
+
+3. **Manually stop stuck instances:**
+   ```bash
+   # List instances
+   curl http://localhost:9867/instances
+   
+   # Stop specific instance
+   curl -X POST http://localhost:9867/instances/<instance-id>/stop
+   ```
+
+4. **Clear state directory:**
+   ```bash
+   rm -rf ~/.pinchtab/state
+   pinchtab
+   ```
+</Accordion>
+
+<Accordion title="Profile corruption">
+**Problem:** Chrome profile is corrupted, causing crashes or weird behavior.
+
+**Solution:**
+
+Delete and recreate profile:
+```bash
+rm -rf ~/.pinchtab/chrome-profile
+pinchtab
+```
+
+<Warning>
+This will clear all cookies, login sessions, and browser history.
+</Warning>
+
+For specific profiles:
+```bash
+rm -rf ~/.pinchtab/profiles/<profile-name>
+```
+</Accordion>
+
+## Debugging
+
+### Enable Debug Logging
+
+```bash
+# Run with verbose output
+pinchtab 2>&1 | tee pinchtab.log
+
+# Filter for specific issues
+pinchtab 2>&1 | grep -E "ERROR|WARN"
+```
+
+### Check Health Endpoint
+
+```bash
+# Main server
+curl http://localhost:9867/health
+
+# Specific instance
+curl http://localhost:9868/health
+```
+
+### Inspect Running Instances
+
+```bash
+# List all instances
+curl http://localhost:9867/instances | jq .
+
+# Get instance details
+curl http://localhost:9867/instances/<instance-id> | jq .
+
+# List tabs in instance
+curl http://localhost:9867/instances/<instance-id>/tabs | jq .
+```
+
+### Monitor Chrome Processes
+
+```bash
+# See all PinchTab-related Chrome processes
+ps aux | grep -E 'Chrome.*\.pinchtab'
+
+# Watch memory usage in real-time
+watch -n 1 'ps aux | grep -E "(pinchtab|chrome)" | awk '"'"'{sum+=$6} END {print sum/1024 " MB"}"'"''
+```
+
+### Check Port Usage
+
+```bash
+# See which ports are in use
+lsof -i :9867-9968
+
+# Check specific port
+lsof -i :9867
+```
+
+### Test Script
+
+Quick validation script:
+
+```bash test-pinchtab.sh
+#!/bin/bash
+
+set -e
+
+echo "Testing PinchTab installation..."
+
+# Check binary
+if command -v pinchtab &> /dev/null; then
+  echo "✅ pinchtab command found"
+else
+  echo "❌ pinchtab command not found"
+  exit 1
+fi
+
+# Check Chrome
+if command -v google-chrome &> /dev/null || command -v chromium &> /dev/null; then
+  echo "✅ Chrome/Chromium found"
+else
+  echo "❌ Chrome/Chromium not found"
+  exit 1
+fi
+
+# Start PinchTab in background
+pinchtab &
+PID=$!
+sleep 3
+
+# Test health endpoint
+if curl -f http://localhost:9867/health &> /dev/null; then
+  echo "✅ PinchTab server responding"
+else
+  echo "❌ PinchTab server not responding"
+  kill $PID 2>/dev/null
+  exit 1
+fi
+
+# Cleanup
+kill $PID 2>/dev/null
+
+echo "✅ All tests passed!"
+```
+
+Run it:
+```bash
+chmod +x test-pinchtab.sh
+./test-pinchtab.sh
+```
+
+## Getting Help
+
+If you're still stuck:
+
+1. **Check the logs:**
+   ```bash
+   pinchtab 2>&1 | tee debug.log
+   ```
+
+2. **Search existing issues:**
+   [https://github.com/pinchtab/pinchtab/issues](https://github.com/pinchtab/pinchtab/issues)
+
+3. **Open a new issue:**
+   Include:
+   - PinchTab version (`pinchtab --version`)
+   - Chrome version (`google-chrome --version`)
+   - Operating system
+   - Configuration (environment variables)
+   - Full error logs
+   - Steps to reproduce
+
+4. **Community support:**
+   - GitHub Discussions
+   - Discord server (link in README)
+
+## Common Gotchas
+
+<Note>
+**Remember:**
+- Always use `export` for environment variables
+- Environment variables override config file
+- Use `BRIDGE_TOKEN` when exposing to network
+- Chrome requires 512MB+ RAM
+- Docker requires `--no-sandbox` flag
+- CDP port has no auth (secure it!)
+- Headless mode uses less memory
+- Clean up orphaned Chrome processes
+</Note>

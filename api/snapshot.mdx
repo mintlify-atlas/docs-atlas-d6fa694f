@@ -1,0 +1,524 @@
+---
+title: 'Snapshot API'
+description: 'Get page structure using the accessibility tree'
+---
+
+## Overview
+
+The Snapshot API returns the page's accessibility tree, which provides:
+
+- All interactive elements (buttons, links, inputs)
+- Text content and headings
+- Element roles and names
+- References (`ref`) for use in actions
+- Page structure and hierarchy
+
+<Note>
+Snapshots use Chrome's Accessibility API, which is faster and more reliable than DOM parsing.
+</Note>
+
+## Get Snapshot
+
+```http
+GET /tabs/{id}/snapshot
+```
+
+<CodeGroup>
+```bash All Elements
+curl "http://localhost:9867/tabs/tab_abc123/snapshot" | jq .
+```
+
+```bash Interactive Only
+curl "http://localhost:9867/tabs/tab_abc123/snapshot?filter=interactive" | jq .
+```
+
+```bash Compact Format
+curl "http://localhost:9867/tabs/tab_abc123/snapshot?filter=interactive&format=compact"
+```
+
+```python Python
+import requests
+
+# Get interactive elements
+resp = requests.get(
+    "http://localhost:9867/tabs/tab_abc123/snapshot",
+    params={"filter": "interactive"}
+)
+snapshot = resp.json()
+
+print(f"Found {snapshot['count']} elements")
+for node in snapshot["nodes"]:
+    print(f"{node['ref']}: {node['role']} - {node['name']}")
+```
+
+```javascript JavaScript
+const resp = await fetch(
+  "http://localhost:9867/tabs/tab_abc123/snapshot?filter=interactive"
+);
+const snapshot = await resp.json();
+
+console.log(`Elements: ${snapshot.count}`);
+snapshot.nodes.forEach(n => {
+  console.log(`${n.ref}: ${n.role} - ${n.name}`);
+});
+```
+</CodeGroup>
+
+### Query Parameters
+
+<ParamField query="filter" type="string" default="all">
+  Filter type: `all` (everything) or `interactive` (clickable/fillable elements only)
+</ParamField>
+
+<ParamField query="format" type="string" default="json">
+  Output format: `json`, `compact`, `text`, `yaml`
+</ParamField>
+
+<ParamField query="depth" type="integer" default="-1">
+  Maximum tree depth (-1 for unlimited)
+</ParamField>
+
+<ParamField query="maxTokens" type="integer">
+  Truncate output to approximately N tokens
+</ParamField>
+
+<ParamField query="selector" type="string">
+  Scope snapshot to specific CSS selector
+</ParamField>
+
+<ParamField query="diff" type="boolean" default="false">
+  Include diff with previous snapshot
+</ParamField>
+
+<ParamField query="output" type="string">
+  Set to `file` to save snapshot to disk
+</ParamField>
+
+### Response (200 OK)
+
+```json
+{
+  "url": "https://example.com",
+  "title": "Example Domain",
+  "nodes": [
+    {
+      "ref": "e0",
+      "role": "heading",
+      "name": "Example Domain",
+      "level": 1
+    },
+    {
+      "ref": "e1",
+      "role": "textbox",
+      "name": "Email address",
+      "value": "",
+      "required": true
+    },
+    {
+      "ref": "e2",
+      "role": "textbox",
+      "name": "Password",
+      "value": "",
+      "required": true
+    },
+    {
+      "ref": "e3",
+      "role": "button",
+      "name": "Sign in"
+    }
+  ],
+  "count": 4
+}
+```
+
+### Response Fields
+
+<ResponseField name="url" type="string" required>
+  Current page URL
+</ResponseField>
+
+<ResponseField name="title" type="string" required>
+  Page title
+</ResponseField>
+
+<ResponseField name="nodes" type="array" required>
+  Array of accessibility nodes
+</ResponseField>
+
+<ResponseField name="count" type="integer" required>
+  Total number of nodes
+</ResponseField>
+
+### Node Fields
+
+<ResponseField name="ref" type="string" required>
+  Element reference (e.g., `e0`, `e1`) for use in actions
+</ResponseField>
+
+<ResponseField name="role" type="string" required>
+  Accessibility role: `button`, `link`, `textbox`, `heading`, `checkbox`, etc.
+</ResponseField>
+
+<ResponseField name="name" type="string" required>
+  Accessible name (label, text content, or aria-label)
+</ResponseField>
+
+<ResponseField name="value" type="string">
+  Current value (for inputs)
+</ResponseField>
+
+<ResponseField name="level" type="integer">
+  Heading level (for headings)
+</ResponseField>
+
+<ResponseField name="checked" type="boolean">
+  Checked state (for checkboxes/radios)
+</ResponseField>
+
+<ResponseField name="required" type="boolean">
+  Required field indicator
+</ResponseField>
+
+---
+
+## Filter Types
+
+### all (default)
+
+Returns all elements including static text and structure.
+
+```bash
+curl "http://localhost:9867/tabs/tab_abc123/snapshot?filter=all"
+```
+
+### interactive
+
+Returns only actionable elements (recommended for most use cases).
+
+```bash
+curl "http://localhost:9867/tabs/tab_abc123/snapshot?filter=interactive"
+```
+
+Interactive elements include:
+- Buttons
+- Links
+- Text inputs
+- Checkboxes
+- Radio buttons
+- Select dropdowns
+- Clickable elements
+
+<Tip>
+Use `filter=interactive` to reduce noise and focus on actionable elements.
+</Tip>
+
+---
+
+## Output Formats
+
+### json (default)
+
+Structured JSON with full node details.
+
+```bash
+curl "http://localhost:9867/tabs/tab_abc123/snapshot?format=json"
+```
+
+### compact
+
+Condensed text format, one element per line.
+
+```bash
+curl "http://localhost:9867/tabs/tab_abc123/snapshot?format=compact"
+```
+
+Output:
+```
+# Example Domain | https://example.com | 4 nodes
+e0 heading "Example Domain" (level=1)
+e1 textbox "Email address" (required)
+e2 textbox "Password" (required)
+e3 button "Sign in"
+```
+
+### text
+
+Human-readable text with indentation.
+
+```bash
+curl "http://localhost:9867/tabs/tab_abc123/snapshot?format=text"
+```
+
+### yaml
+
+YAML format for better readability.
+
+```bash
+curl "http://localhost:9867/tabs/tab_abc123/snapshot?format=yaml"
+```
+
+---
+
+## Advanced Features
+
+### Scope to Selector
+
+Get snapshot of a specific part of the page:
+
+```bash
+curl "http://localhost:9867/tabs/tab_abc123/snapshot?selector=#login-form&filter=interactive"
+```
+
+### Limit Depth
+
+Limit tree depth to reduce output size:
+
+```bash
+curl "http://localhost:9867/tabs/tab_abc123/snapshot?depth=3&filter=interactive"
+```
+
+### Truncate by Tokens
+
+Limit output to approximately N tokens (useful for LLMs):
+
+```bash
+curl "http://localhost:9867/tabs/tab_abc123/snapshot?maxTokens=1000&filter=interactive"
+```
+
+Response includes `truncated: true` if content was cut.
+
+### Diff with Previous
+
+Compare with the previous snapshot to detect changes:
+
+```bash
+curl "http://localhost:9867/tabs/tab_abc123/snapshot?diff=true&filter=interactive"
+```
+
+Response:
+```json
+{
+  "diff": true,
+  "added": [...],
+  "changed": [...],
+  "removed": [...],
+  "counts": {
+    "added": 2,
+    "changed": 1,
+    "removed": 0,
+    "total": 10
+  }
+}
+```
+
+### Save to File
+
+Save snapshot to disk instead of returning in response:
+
+```bash
+curl "http://localhost:9867/tabs/tab_abc123/snapshot?output=file&format=json"
+```
+
+Response:
+```json
+{
+  "path": "/path/to/snapshot-20260303-123456.json",
+  "size": 5432,
+  "format": "json",
+  "timestamp": "20260303-123456"
+}
+```
+
+---
+
+## Complete Workflow
+
+```python
+import requests
+
+BASE = "http://localhost:9867"
+
+# Start instance and open tab
+inst = requests.post(f"{BASE}/instances/start",
+    json={"mode": "headed"}).json()
+tab = requests.post(f"{BASE}/instances/{inst['id']}/tabs/open",
+    json={"url": "https://example.com/login"}).json()
+
+tab_id = tab["tabId"]
+
+# Get interactive elements
+snapshot = requests.get(
+    f"{BASE}/tabs/{tab_id}/snapshot",
+    params={"filter": "interactive"}
+).json()
+
+print(f"Page: {snapshot['title']}")
+print(f"Elements: {snapshot['count']}\n")
+
+# Print all interactive elements
+for node in snapshot["nodes"]:
+    role = node["role"]
+    name = node["name"]
+    ref = node["ref"]
+    
+    extra = []
+    if "value" in node:
+        extra.append(f"value={node['value']}")
+    if node.get("required"):
+        extra.append("required")
+    if node.get("checked") is not None:
+        extra.append(f"checked={node['checked']}")
+    
+    extra_str = f" ({', '.join(extra)})" if extra else ""
+    print(f"{ref}: {role} '{name}'{extra_str}")
+
+# Find email input by name
+email_ref = next(
+    (n["ref"] for n in snapshot["nodes"] 
+     if n["role"] == "textbox" and "email" in n["name"].lower()),
+    None
+)
+
+if email_ref:
+    print(f"\nFound email input: {email_ref}")
+    
+    # Fill email using the ref
+    requests.post(f"{BASE}/tabs/{tab_id}/action",
+        json={"kind": "fill", "ref": email_ref, "text": "user@example.com"})
+
+# Cleanup
+requests.post(f"{BASE}/instances/{inst['id']}/stop")
+```
+
+---
+
+## Element Roles
+
+Common accessibility roles you'll encounter:
+
+| Role | Description | Actions |
+|------|-------------|---------|
+| `button` | Button element | click |
+| `link` | Hyperlink | click |
+| `textbox` | Text input field | type, fill, focus |
+| `checkbox` | Checkbox input | click |
+| `radio` | Radio button | click |
+| `combobox` | Dropdown/select | select |
+| `heading` | Heading (h1-h6) | - |
+| `list` | List container | - |
+| `listitem` | List item | - |
+| `menu` | Menu container | - |
+| `menuitem` | Menu item | click |
+| `tab` | Tab element | click |
+| `tabpanel` | Tab panel content | - |
+
+---
+
+## Error Handling
+
+### Tab Not Found (404)
+
+```bash
+curl "http://localhost:9867/tabs/nonexistent/snapshot"
+```
+
+**Response:**
+```json
+{
+  "error": "tab not found",
+  "statusCode": 404
+}
+```
+
+### Selector Not Found (400)
+
+```bash
+curl "http://localhost:9867/tabs/tab_abc123/snapshot?selector=#nonexistent"
+```
+
+**Response:**
+```json
+{
+  "error": "selector: selector \"#nonexistent\" not found",
+  "statusCode": 400
+}
+```
+
+---
+
+## Best Practices
+
+### Use Interactive Filter
+
+For automation tasks, always use `filter=interactive`:
+
+```python
+# ✅ Good: Only actionable elements
+snapshot = requests.get(
+    f"{BASE}/tabs/{tab_id}/snapshot?filter=interactive"
+).json()
+
+# ❌ Bad: Too much noise
+snapshot = requests.get(
+    f"{BASE}/tabs/{tab_id}/snapshot"
+).json()
+```
+
+### Refresh After Navigation
+
+Take a new snapshot after navigating:
+
+```python
+# Navigate
+requests.post(f"{BASE}/tabs/{tab_id}/navigate",
+    json={"url": "https://example.com/page2"})
+
+# MUST take new snapshot
+snapshot = requests.get(
+    f"{BASE}/tabs/{tab_id}/snapshot?filter=interactive"
+).json()
+```
+
+### Use Compact Format for Logging
+
+```python
+# Get compact format for logging
+resp = requests.get(
+    f"{BASE}/tabs/{tab_id}/snapshot?format=compact&filter=interactive"
+)
+print(resp.text)  # Easy to read text format
+```
+
+### Scope Large Pages
+
+For pages with many elements, scope to relevant sections:
+
+```python
+# Scope to login form only
+snapshot = requests.get(
+    f"{BASE}/tabs/{tab_id}/snapshot",
+    params={
+        "selector": "#login-form",
+        "filter": "interactive"
+    }
+).json()
+```
+
+---
+
+## Next Steps
+
+<CardGroup cols={2}>
+  <Card title="Actions API" icon="hand-pointer" href="/api/actions">
+    Use refs from snapshots in actions
+  </Card>
+  <Card title="Evaluation" icon="code" href="/api/evaluation">
+    Execute JavaScript for custom queries
+  </Card>
+  <Card title="Navigation" icon="compass" href="/api/navigation">
+    Navigate before taking snapshots
+  </Card>
+  <Card title="Screenshots" icon="image" href="/api/screenshots">
+    Visual page inspection
+  </Card>
+</CardGroup>

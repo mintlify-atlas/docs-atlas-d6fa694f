@@ -1,0 +1,412 @@
+---
+title: 'Screenshots API'
+description: 'Capture page screenshots in JPEG format'
+---
+
+## Overview
+
+The Screenshots API captures visual snapshots of browser tabs. Screenshots are returned as:
+
+- Base64-encoded strings (default)
+- Raw JPEG binary data
+- Saved files on disk
+
+## Capture Screenshot
+
+```http
+GET /tabs/{id}/screenshot
+```
+
+<CodeGroup>
+```bash Basic
+curl "http://localhost:9867/tabs/tab_abc123/screenshot" | jq .
+```
+
+```bash Raw Binary
+curl "http://localhost:9867/tabs/tab_abc123/screenshot?raw=true" > screenshot.jpg
+```
+
+```bash Custom Quality
+curl "http://localhost:9867/tabs/tab_abc123/screenshot?quality=95&raw=true" > screenshot.jpg
+```
+
+```python Python
+import requests
+import base64
+
+# Get as base64
+resp = requests.get(
+    "http://localhost:9867/tabs/tab_abc123/screenshot"
+)
+data = resp.json()
+
+# Decode and save
+with open("screenshot.jpg", "wb") as f:
+    f.write(base64.b64decode(data["base64"]))
+
+# Or get raw binary directly
+resp = requests.get(
+    "http://localhost:9867/tabs/tab_abc123/screenshot?raw=true"
+)
+with open("screenshot.jpg", "wb") as f:
+    f.write(resp.content)
+```
+
+```javascript JavaScript
+// Get as base64
+const resp = await fetch(
+  "http://localhost:9867/tabs/tab_abc123/screenshot"
+);
+const data = await resp.json();
+
+// Convert to blob
+const binary = atob(data.base64);
+const bytes = new Uint8Array(binary.length);
+for (let i = 0; i < binary.length; i++) {
+  bytes[i] = binary.charCodeAt(i);
+}
+const blob = new Blob([bytes], { type: "image/jpeg" });
+
+// Or fetch raw
+const rawResp = await fetch(
+  "http://localhost:9867/tabs/tab_abc123/screenshot?raw=true"
+);
+const imageBlob = await rawResp.blob();
+```
+</CodeGroup>
+
+### Query Parameters
+
+<ParamField query="quality" type="integer" default="80">
+  JPEG quality (0-100). Higher = better quality, larger file size.
+</ParamField>
+
+<ParamField query="raw" type="boolean" default="false">
+  Return raw JPEG binary instead of base64 JSON
+</ParamField>
+
+<ParamField query="output" type="string">
+  Set to `file` to save screenshot to disk
+</ParamField>
+
+<ParamField query="noAnimations" type="boolean" default="false">
+  Disable CSS animations before capturing
+</ParamField>
+
+### Response (200 OK - JSON)
+
+```json
+{
+  "format": "jpeg",
+  "base64": "/9j/4AAQSkZJRgABAQEAYABgAAD..."
+}
+```
+
+### Response (200 OK - Raw)
+
+When `raw=true`, returns raw JPEG binary with `Content-Type: image/jpeg` header.
+
+---
+
+## Save to File
+
+Save screenshot directly to disk instead of returning in response:
+
+```bash
+curl "http://localhost:9867/tabs/tab_abc123/screenshot?output=file"
+```
+
+Response:
+```json
+{
+  "path": "/path/to/screenshots/screenshot-20260303-123456.jpg",
+  "size": 45678,
+  "format": "jpeg",
+  "timestamp": "20260303-123456"
+}
+```
+
+---
+
+## Quality Levels
+
+| Quality | File Size | Use Case |
+|---------|-----------|----------|
+| **60** | Smallest | Quick previews, thumbnails |
+| **80** | Medium (default) | General screenshots |
+| **90** | Large | High-quality captures |
+| **95-100** | Largest | Maximum quality |
+
+---
+
+## Complete Example
+
+```python
+import requests
+import base64
+import time
+
+BASE = "http://localhost:9867"
+
+# Start instance
+inst = requests.post(f"{BASE}/instances/start",
+    json={"mode": "headed"}).json()
+
+# Open tab
+tab = requests.post(f"{BASE}/instances/{inst['id']}/tabs/open",
+    json={"url": "https://example.com"}).json()
+
+tab_id = tab["tabId"]
+
+# Wait for page load
+time.sleep(2)
+
+# Capture screenshot (base64)
+resp = requests.get(
+    f"{BASE}/tabs/{tab_id}/screenshot",
+    params={"quality": 90}
+)
+
+screenshot_data = resp.json()
+
+# Save to file
+with open("example.jpg", "wb") as f:
+    f.write(base64.b64decode(screenshot_data["base64"]))
+
+print("Screenshot saved to example.jpg")
+
+# Alternative: Get raw binary directly
+resp = requests.get(
+    f"{BASE}/tabs/{tab_id}/screenshot",
+    params={"quality": 90, "raw": True}
+)
+
+with open("example_raw.jpg", "wb") as f:
+    f.write(resp.content)
+
+print("Raw screenshot saved to example_raw.jpg")
+
+# Cleanup
+requests.post(f"{BASE}/instances/{inst['id']}/stop")
+```
+
+---
+
+## Multiple Screenshots Example
+
+```bash
+#!/bin/bash
+
+BASE="http://localhost:9867"
+TAB="tab_abc123"
+
+SITES=(
+  "https://example.com"
+  "https://google.com"
+  "https://github.com"
+)
+
+for site in "${SITES[@]}"; do
+  # Navigate
+  curl -s -X POST "$BASE/tabs/$TAB/navigate" \
+    -d "{\"url\":\"$site\"}"
+  
+  sleep 2
+  
+  # Capture screenshot
+  NAME=$(echo $site | sed 's/https:\/\///' | sed 's/\//_/g')
+  curl -s "$BASE/tabs/$TAB/screenshot?raw=true&quality=85" \
+    > "${NAME}.jpg"
+  
+  echo "Saved ${NAME}.jpg"
+done
+```
+
+---
+
+## Disable Animations
+
+Disable CSS animations before capturing for consistent screenshots:
+
+```bash
+curl "http://localhost:9867/tabs/tab_abc123/screenshot?noAnimations=true&raw=true" \
+  > screenshot.jpg
+```
+
+This is useful for:
+- Automated testing (avoid animation flakiness)
+- Consistent visual comparisons
+- Cleaner documentation screenshots
+
+---
+
+## Error Handling
+
+### Tab Not Found (404)
+
+```bash
+curl "http://localhost:9867/tabs/nonexistent/screenshot"
+```
+
+**Response:**
+```json
+{
+  "error": "tab not found",
+  "statusCode": 404
+}
+```
+
+### Chrome Error (500)
+
+```bash
+# If page failed to load
+curl "http://localhost:9867/tabs/tab_abc123/screenshot"
+```
+
+**Response:**
+```json
+{
+  "error": "screenshot: page not ready",
+  "statusCode": 500
+}
+```
+
+---
+
+## Best Practices
+
+### Wait for Page Load
+
+Always wait for the page to fully load before capturing:
+
+```python
+# Navigate
+requests.post(f"{BASE}/tabs/{tab_id}/navigate",
+    json={"url": "https://example.com", "waitFor": "networkidle"})
+
+# Now capture
+resp = requests.get(f"{BASE}/tabs/{tab_id}/screenshot?raw=true")
+```
+
+### Use Appropriate Quality
+
+```python
+# Thumbnails: low quality
+requests.get(f"{BASE}/tabs/{tab_id}/screenshot?quality=60")
+
+# Documentation: medium quality
+requests.get(f"{BASE}/tabs/{tab_id}/screenshot?quality=80")
+
+# Detailed captures: high quality
+requests.get(f"{BASE}/tabs/{tab_id}/screenshot?quality=95")
+```
+
+### Prefer Raw for Large Files
+
+```python
+# ✅ Good: Direct binary (more efficient)
+resp = requests.get(f"{BASE}/tabs/{tab_id}/screenshot?raw=true")
+with open("screenshot.jpg", "wb") as f:
+    f.write(resp.content)
+
+# ❌ Bad: Base64 (larger payload, needs decoding)
+resp = requests.get(f"{BASE}/tabs/{tab_id}/screenshot")
+data = base64.b64decode(resp.json()["base64"])
+with open("screenshot.jpg", "wb") as f:
+    f.write(data)
+```
+
+### Disable Animations for Consistency
+
+```python
+# For automated testing
+requests.get(
+    f"{BASE}/tabs/{tab_id}/screenshot",
+    params={"noAnimations": True, "raw": True}
+)
+```
+
+---
+
+## Use Cases
+
+### Visual Regression Testing
+
+```python
+import requests
+import hashlib
+
+def capture_and_hash(tab_id):
+    resp = requests.get(
+        f"http://localhost:9867/tabs/{tab_id}/screenshot?raw=true&noAnimations=true"
+    )
+    return hashlib.md5(resp.content).hexdigest()
+
+# Baseline
+baseline_hash = capture_and_hash(tab_id)
+
+# After changes
+current_hash = capture_and_hash(tab_id)
+
+if baseline_hash != current_hash:
+    print("Visual regression detected!")
+```
+
+### Automated Documentation
+
+```python
+# Capture screenshots for docs
+pages = [
+    ("https://example.com", "homepage"),
+    ("https://example.com/features", "features"),
+    ("https://example.com/pricing", "pricing")
+]
+
+for url, name in pages:
+    requests.post(f"{BASE}/tabs/{tab_id}/navigate",
+        json={"url": url, "waitFor": "networkidle"})
+    
+    resp = requests.get(
+        f"{BASE}/tabs/{tab_id}/screenshot?raw=true&quality=90"
+    )
+    
+    with open(f"docs/images/{name}.jpg", "wb") as f:
+        f.write(resp.content)
+```
+
+### Monitor Page Changes
+
+```python
+import time
+
+while True:
+    # Capture screenshot
+    resp = requests.get(
+        f"{BASE}/tabs/{tab_id}/screenshot",
+        params={"output": "file", "quality": 80}
+    )
+    
+    path = resp.json()["path"]
+    print(f"Screenshot saved: {path}")
+    
+    time.sleep(300)  # Every 5 minutes
+```
+
+---
+
+## Next Steps
+
+<CardGroup cols={2}>
+  <Card title="PDF Export" icon="file-pdf" href="/api/pdf">
+    Export pages as PDF documents
+  </Card>
+  <Card title="Screencast" icon="video" href="/api/screencast">
+    Live streaming of tab content
+  </Card>
+  <Card title="Snapshot" icon="camera" href="/api/snapshot">
+    Get structured page data
+  </Card>
+  <Card title="Navigation" icon="compass" href="/api/navigation">
+    Navigate before capturing
+  </Card>
+</CardGroup>

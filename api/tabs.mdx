@@ -1,0 +1,557 @@
+---
+title: 'Tabs API'
+description: 'List and manage browser tabs'
+---
+
+## Overview
+
+Tabs are individual browser pages within an instance. Each tab:
+
+- Has a unique ID in format `tab_XXXXXXXX`
+- Belongs to a specific instance
+- Can navigate to different URLs
+- Maintains its own state (cookies inherited from profile)
+- Can be locked for multi-agent coordination
+
+<Note>
+Tab IDs use hash-based format (`tab_XXXXXXXX`) for security. Raw Chrome DevTools Protocol target IDs are never exposed.
+</Note>
+
+## List All Tabs
+
+Get all tabs across all instances, or filter by instance.
+
+```http
+GET /tabs
+```
+
+<CodeGroup>
+```bash cURL (All tabs)
+curl http://localhost:9867/tabs | jq .
+```
+
+```bash cURL (Filter by instance)
+curl 'http://localhost:9867/tabs?instanceId=inst_xyz' | jq .
+```
+
+```python Python
+import requests
+
+# All tabs
+tabs = requests.get("http://localhost:9867/tabs").json()
+print(f"Total tabs: {len(tabs)}")
+
+# Filter by instance
+tabs = requests.get("http://localhost:9867/tabs", 
+    params={"instanceId": "inst_xyz"}).json()
+```
+
+```javascript JavaScript
+// All tabs
+const resp = await fetch("http://localhost:9867/tabs");
+const tabs = await resp.json();
+console.log(`Total tabs: ${tabs.length}`);
+
+// Filter by instance
+const filtered = await fetch("http://localhost:9867/tabs?instanceId=inst_xyz");
+const instanceTabs = await filtered.json();
+```
+</CodeGroup>
+
+### Query Parameters
+
+<ParamField query="instanceId" type="string">
+  Filter tabs to a specific instance
+</ParamField>
+
+### Response
+
+```json
+[
+  {
+    "id": "tab_abc123",
+    "instanceId": "inst_xyz",
+    "url": "https://example.com",
+    "title": "Example Domain",
+    "status": "ready",
+    "createdAt": "2026-03-01T05:25:30Z"
+  },
+  {
+    "id": "tab_def456",
+    "instanceId": "inst_xyz",
+    "url": "https://google.com",
+    "title": "Google",
+    "status": "ready",
+    "createdAt": "2026-03-01T05:26:00Z"
+  }
+]
+```
+
+### Response Fields
+
+<ResponseField name="id" type="string" required>
+  Tab ID (format: `tab_XXXXXXXX`)
+</ResponseField>
+
+<ResponseField name="instanceId" type="string" required>
+  Instance ID that owns this tab
+</ResponseField>
+
+<ResponseField name="url" type="string" required>
+  Current URL
+</ResponseField>
+
+<ResponseField name="title" type="string" required>
+  Page title
+</ResponseField>
+
+<ResponseField name="status" type="string" required>
+  Tab status: `ready`, `loading`, `error`
+</ResponseField>
+
+<ResponseField name="createdAt" type="string" required>
+  ISO 8601 timestamp when tab was created
+</ResponseField>
+
+---
+
+## Open Tab
+
+Create a new tab in an instance.
+
+```http
+POST /instances/{id}/tabs/open
+```
+
+<CodeGroup>
+```bash cURL (With URL)
+curl -X POST http://localhost:9867/instances/inst_xyz/tabs/open \
+  -H "Content-Type: application/json" \
+  -d '{"url": "https://example.com"}'
+```
+
+```bash cURL (Blank tab)
+curl -X POST http://localhost:9867/instances/inst_xyz/tabs/open \
+  -H "Content-Type: application/json" \
+  -d '{}'
+```
+
+```python Python
+import requests
+
+# Open tab with URL
+resp = requests.post(
+    "http://localhost:9867/instances/inst_xyz/tabs/open",
+    json={"url": "https://example.com"}
+)
+tab = resp.json()
+print(f"Tab: {tab['tabId']}")
+
+# Open blank tab
+resp = requests.post(
+    "http://localhost:9867/instances/inst_xyz/tabs/open",
+    json={}
+)
+```
+
+```javascript JavaScript
+// Open tab with URL
+const resp = await fetch(
+  "http://localhost:9867/instances/inst_xyz/tabs/open",
+  {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ url: "https://example.com" })
+  }
+);
+const tab = await resp.json();
+console.log(`Tab: ${tab.tabId}`);
+```
+</CodeGroup>
+
+### Request Body
+
+<ParamField path="url" type="string">
+  URL to navigate to after opening tab. If omitted, opens a blank tab.
+</ParamField>
+
+### Response (201 Created)
+
+```json
+{
+  "tabId": "tab_abc123",
+  "url": "https://example.com",
+  "title": "Example Domain"
+}
+```
+
+<Note>
+Every call to this endpoint creates a **new tab**. Use `/tabs/{id}/navigate` to navigate an existing tab.
+</Note>
+
+---
+
+## Get Tab Info
+
+Get details for a specific tab.
+
+```http
+GET /tabs/{id}
+```
+
+```bash
+curl http://localhost:9867/tabs/tab_abc123 | jq .
+```
+
+### Response (200 OK)
+
+```json
+{
+  "id": "tab_abc123",
+  "instanceId": "inst_xyz",
+  "url": "https://example.com",
+  "title": "Example Domain",
+  "status": "ready",
+  "createdAt": "2026-03-01T05:25:30Z"
+}
+```
+
+---
+
+## Close Tab
+
+Close a tab and remove it from the instance.
+
+```http
+POST /tabs/{id}/close
+```
+
+```bash
+curl -X POST http://localhost:9867/tabs/tab_abc123/close
+```
+
+### Response (200 OK)
+
+```json
+{
+  "id": "tab_abc123",
+  "status": "closed"
+}
+```
+
+<Warning>
+Closed tabs cannot be reopened. Create a new tab if needed.
+</Warning>
+
+---
+
+## Lock Tab
+
+Lock a tab to prevent concurrent access (useful for multi-agent scenarios).
+
+```http
+POST /tabs/{id}/lock
+```
+
+```bash
+curl -X POST http://localhost:9867/tabs/tab_abc123/lock \
+  -H "Content-Type: application/json" \
+  -d '{
+    "owner": "agent-1",
+    "ttl": 120
+  }'
+```
+
+### Request Body
+
+<ParamField path="owner" type="string" required>
+  Unique identifier for the agent/user locking the tab
+</ParamField>
+
+<ParamField path="ttl" type="integer" default="60">
+  Time-to-live in seconds. Lock expires after this duration.
+</ParamField>
+
+### Response (200 OK)
+
+```json
+{
+  "locked": true,
+  "owner": "agent-1",
+  "expiresAt": "2026-03-03T12:34:56Z"
+}
+```
+
+---
+
+## Unlock Tab
+
+Release a tab lock.
+
+```http
+POST /tabs/{id}/unlock
+```
+
+```bash
+curl -X POST http://localhost:9867/tabs/tab_abc123/unlock \
+  -H "Content-Type: application/json" \
+  -d '{
+    "owner": "agent-1"
+  }'
+```
+
+### Request Body
+
+<ParamField path="owner" type="string" required>
+  Owner who locked the tab (must match)
+</ParamField>
+
+### Response (200 OK)
+
+```json
+{
+  "unlocked": true
+}
+```
+
+<Note>
+If the owner doesn't match, returns 423 Locked error.
+</Note>
+
+---
+
+## Complete Workflow Example
+
+```bash
+#!/bin/bash
+
+BASE="http://localhost:9867"
+
+# 1. Start instance
+INST=$(curl -s -X POST $BASE/instances/start \
+  -d '{"mode":"headed"}' | jq -r '.id')
+echo "Instance: $INST"
+
+# 2. Open first tab
+TAB1=$(curl -s -X POST "$BASE/instances/$INST/tabs/open" \
+  -d '{"url":"https://example.com"}' | jq -r '.tabId')
+echo "Tab 1: $TAB1"
+
+# 3. Open second tab
+TAB2=$(curl -s -X POST "$BASE/instances/$INST/tabs/open" \
+  -d '{"url":"https://google.com"}' | jq -r '.tabId')
+echo "Tab 2: $TAB2"
+
+# 4. List all tabs in instance
+echo -e "\nTabs in instance:"
+curl -s "$BASE/tabs?instanceId=$INST" | jq '.[] | {id, url, title}'
+
+# 5. Get info on tab 1
+echo -e "\nTab 1 info:"
+curl -s "$BASE/tabs/$TAB1" | jq .
+
+# 6. Lock tab 2
+curl -s -X POST "$BASE/tabs/$TAB2/lock" \
+  -d '{"owner":"my-script","ttl":300}' | jq .
+
+# 7. Do work...
+sleep 2
+
+# 8. Unlock tab 2
+curl -s -X POST "$BASE/tabs/$TAB2/unlock" \
+  -d '{"owner":"my-script"}' | jq .
+
+# 9. Close tabs
+curl -s -X POST "$BASE/tabs/$TAB1/close" | jq .
+curl -s -X POST "$BASE/tabs/$TAB2/close" | jq .
+
+# 10. Stop instance
+curl -s -X POST "$BASE/instances/$INST/stop" | jq .
+```
+
+---
+
+## Multi-Agent Example
+
+```python
+import requests
+import time
+from contextlib import contextmanager
+
+BASE = "http://localhost:9867"
+AGENT_ID = "agent-1"
+
+@contextmanager
+def locked_tab(tab_id, owner, ttl=300):
+    """Context manager for tab locking"""
+    # Lock
+    requests.post(f"{BASE}/tabs/{tab_id}/lock",
+        json={"owner": owner, "ttl": ttl})
+    
+    try:
+        yield tab_id
+    finally:
+        # Always unlock
+        requests.post(f"{BASE}/tabs/{tab_id}/unlock",
+            json={"owner": owner})
+
+# Start instance
+inst = requests.post(f"{BASE}/instances/start",
+    json={"mode": "headed"}).json()
+
+# Open tab
+tab = requests.post(f"{BASE}/instances/{inst['id']}/tabs/open",
+    json={"url": "https://example.com"}).json()
+
+tab_id = tab["tabId"]
+
+# Use locked tab
+with locked_tab(tab_id, AGENT_ID):
+    # Tab is locked - only this agent can interact
+    
+    # Navigate
+    requests.post(f"{BASE}/tabs/{tab_id}/navigate",
+        json={"url": "https://google.com"})
+    
+    time.sleep(2)
+    
+    # Get snapshot
+    snapshot = requests.get(
+        f"{BASE}/tabs/{tab_id}/snapshot?filter=interactive"
+    ).json()
+    
+    print(f"Elements: {len(snapshot['nodes'])}")
+
+# Tab automatically unlocked when exiting context
+
+# Cleanup
+requests.post(f"{BASE}/instances/{inst['id']}/stop")
+```
+
+---
+
+## Tab Status Values
+
+| Status | Description |
+|--------|-------------|
+| `ready` | Tab is loaded and ready to accept commands |
+| `loading` | Tab is navigating to a URL |
+| `error` | Tab failed to load |
+
+---
+
+## Error Handling
+
+### Instance Not Found (404)
+
+```bash
+curl -X POST http://localhost:9867/instances/nonexistent/tabs/open \
+  -d '{"url":"https://example.com"}'
+```
+
+**Response:**
+```json
+{
+  "error": "instance not found",
+  "statusCode": 404
+}
+```
+
+### Tab Not Found (404)
+
+```bash
+curl http://localhost:9867/tabs/nonexistent
+```
+
+**Response:**
+```json
+{
+  "error": "tab not found",
+  "statusCode": 404
+}
+```
+
+### Tab Locked (423)
+
+```bash
+curl -X POST http://localhost:9867/tabs/tab_abc123/action \
+  -H "X-Owner: agent-2" \
+  -d '{"kind":"click","ref":"e5"}'
+```
+
+**Response (if locked by agent-1):**
+```json
+{
+  "error": "tab tab_abc123 is locked by agent-1",
+  "code": "tab_locked",
+  "statusCode": 423
+}
+```
+
+---
+
+## Best Practices
+
+### Tab Lifecycle
+
+```bash
+# 1. Open tab
+TAB=$(curl -s -X POST $BASE/instances/$INST/tabs/open -d '{}' | jq -r .tabId)
+
+# 2. Do work
+curl -X POST "$BASE/tabs/$TAB/navigate" -d '{"url":"https://example.com"}'
+
+# 3. Get results
+curl "$BASE/tabs/$TAB/snapshot"
+
+# 4. Close tab
+curl -X POST "$BASE/tabs/$TAB/close"
+```
+
+### Resource Management
+
+Always close tabs when done:
+
+```bash
+# Close all tabs in instance
+for tab in $(curl -s "$BASE/tabs?instanceId=$INST" | jq -r '.[].id'); do
+  curl -s -X POST "$BASE/tabs/$tab/close"
+done
+```
+
+### Use Locks for Safety
+
+Use tab locks in multi-agent scenarios:
+
+```python
+# Lock before operations
+requests.post(f"{BASE}/tabs/{tab_id}/lock",
+    json={"owner": AGENT_ID, "ttl": 300})
+
+try:
+    # Do work
+    requests.post(f"{BASE}/tabs/{tab_id}/action", ...)
+finally:
+    # Always unlock
+    requests.post(f"{BASE}/tabs/{tab_id}/unlock",
+        json={"owner": AGENT_ID})
+```
+
+---
+
+## Next Steps
+
+<CardGroup cols={2}>
+  <Card title="Navigation" icon="compass" href="/api/navigation">
+    Navigate tabs to URLs
+  </Card>
+  <Card title="Snapshot" icon="camera" href="/api/snapshot">
+    Get page structure (accessibility tree)
+  </Card>
+  <Card title="Actions" icon="hand-pointer" href="/api/actions">
+    Click, type, and interact with pages
+  </Card>
+  <Card title="Screenshots" icon="image" href="/api/screenshots">
+    Capture screenshots
+  </Card>
+</CardGroup>

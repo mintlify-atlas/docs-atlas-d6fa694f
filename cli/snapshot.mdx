@@ -1,0 +1,591 @@
+---
+title: 'Snapshot Command'
+description: 'Capture accessibility tree snapshots of web pages'
+icon: 'camera'
+---
+
+# Snapshot Command
+
+The `snap` (or `snapshot`) command captures the accessibility tree of the current page, providing a structured representation of interactive elements.
+
+## Basic Usage
+
+```bash
+pinchtab snap
+```
+
+Output:
+```json
+{
+  "format": "tree",
+  "url": "https://example.com",
+  "title": "Example Domain",
+  "elements": [
+    {"ref": "e1", "role": "heading", "name": "Example Domain", "level": 1},
+    {"ref": "e2", "role": "link", "name": "More information..."},
+    {"ref": "e3", "role": "button", "name": "Accept"}
+  ]
+}
+```
+
+### Alias
+
+Both commands are identical:
+
+```bash
+pinchtab snap
+pinchtab snapshot
+```
+
+## Snapshot Flags
+
+<ParamField path="-i, --interactive" type="boolean">
+  Show only interactive elements (buttons, links, inputs, etc.).
+  
+  ```bash
+  pinchtab snap -i
+  ```
+  
+  Filters to elements that users can interact with: buttons, links, textboxes, checkboxes, radios, comboboxes, etc.
+</ParamField>
+
+<ParamField path="-c, --compact" type="boolean">
+  Compact format (most token-efficient).
+  
+  ```bash
+  pinchtab snap -c
+  ```
+  
+  Reduces token usage by ~40% compared to full tree format. Ideal for LLM context windows.
+</ParamField>
+
+<ParamField path="-d, --diff" type="boolean">
+  Show only changes since last snapshot.
+  
+  ```bash
+  pinchtab snap -d
+  ```
+  
+  Returns elements that were added, removed, or modified since the previous snapshot.
+</ParamField>
+
+<ParamField path="-s, --selector" type="string">
+  Scope snapshot to CSS selector.
+  
+  ```bash
+  pinchtab snap -s "#main-content"
+  pinchtab snap -s ".sidebar"
+  pinchtab snap -s "div.container > ul"
+  ```
+  
+  Only captures elements within the specified selector.
+</ParamField>
+
+<ParamField path="--max-tokens" type="integer">
+  Truncate output to approximately N tokens.
+  
+  ```bash
+  pinchtab snap --max-tokens 1000
+  ```
+  
+  Useful for staying within LLM context limits.
+</ParamField>
+
+<ParamField path="--depth" type="integer">
+  Maximum tree depth.
+  
+  ```bash
+  pinchtab snap --depth 3
+  ```
+  
+  Limits how deep the accessibility tree traversal goes.
+</ParamField>
+
+<ParamField path="--tab" type="string">
+  Target specific tab.
+  
+  ```bash
+  pinchtab snap --tab tab_abc123
+  ```
+  
+  Snapshots a specific tab instead of the active tab.
+</ParamField>
+
+### Combining Flags
+
+```bash
+# Interactive + compact (best for AI agents)
+pinchtab snap -i -c
+
+# Interactive + compact + scoped
+pinchtab snap -i -c -s "#main"
+
+# Diff with compact format
+pinchtab snap -d -c
+
+# Interactive + max tokens
+pinchtab snap -i --max-tokens 2000
+```
+
+## Output Formats
+
+### Full Tree Format (Default)
+
+```bash
+pinchtab snap
+```
+
+```json
+{
+  "format": "tree",
+  "url": "https://example.com",
+  "title": "Example Domain",
+  "elements": [
+    {
+      "ref": "e1",
+      "role": "heading",
+      "name": "Example Domain",
+      "level": 1,
+      "children": []
+    },
+    {
+      "ref": "e2",
+      "role": "paragraph",
+      "name": "This domain is for use in illustrative examples...",
+      "children": [
+        {
+          "ref": "e3",
+          "role": "link",
+          "name": "More information...",
+          "url": "https://www.iana.org/domains/example"
+        }
+      ]
+    }
+  ]
+}
+```
+
+### Compact Format
+
+```bash
+pinchtab snap -c
+```
+
+```json
+{
+  "format": "compact",
+  "url": "https://example.com",
+  "title": "Example Domain",
+  "elements": [
+    {"ref": "e1", "role": "heading", "name": "Example Domain"},
+    {"ref": "e2", "role": "link", "name": "More information..."},
+    {"ref": "e3", "role": "button", "name": "Accept"}
+  ]
+}
+```
+
+Compact format:
+- Flat list (no nesting)
+- Minimal fields
+- 40% fewer tokens
+- Easier to parse
+
+### Interactive Filter
+
+```bash
+pinchtab snap -i
+```
+
+```json
+{
+  "format": "tree",
+  "filter": "interactive",
+  "elements": [
+    {"ref": "e1", "role": "button", "name": "Sign in"},
+    {"ref": "e2", "role": "link", "name": "Create account"},
+    {"ref": "e3", "role": "textbox", "name": "Email"},
+    {"ref": "e4", "role": "textbox", "name": "Password"},
+    {"ref": "e5", "role": "checkbox", "name": "Remember me"}
+  ]
+}
+```
+
+Interactive roles:
+- `button`
+- `link`
+- `textbox`
+- `checkbox`
+- `radio`
+- `combobox`
+- `listbox`
+- `menuitem`
+- `tab`
+
+### Diff Format
+
+```bash
+# First snapshot
+pinchtab snap > snapshot1.json
+
+# Perform action
+pinchtab click e5
+
+# Diff snapshot
+pinchtab snap -d
+```
+
+```json
+{
+  "format": "diff",
+  "changes": [
+    {
+      "type": "added",
+      "ref": "e12",
+      "role": "dialog",
+      "name": "Confirmation"
+    },
+    {
+      "type": "removed",
+      "ref": "e5",
+      "role": "button",
+      "name": "Submit"
+    },
+    {
+      "type": "modified",
+      "ref": "e3",
+      "role": "textbox",
+      "name": "Email",
+      "old": {"value": ""},
+      "new": {"value": "user@example.com"}
+    }
+  ]
+}
+```
+
+## Element Properties
+
+<ParamField path="ref" type="string">
+  Element reference ID (e.g., `e1`, `e2`). Use with action commands.
+</ParamField>
+
+<ParamField path="role" type="string">
+  ARIA role (e.g., `button`, `link`, `textbox`, `heading`).
+</ParamField>
+
+<ParamField path="name" type="string">
+  Accessible name (text content, aria-label, or alt text).
+</ParamField>
+
+<ParamField path="value" type="string">
+  Current value (for inputs).
+</ParamField>
+
+<ParamField path="level" type="integer">
+  Heading level (1-6) for heading elements.
+</ParamField>
+
+<ParamField path="url" type="string">
+  Link destination (for links).
+</ParamField>
+
+<ParamField path="checked" type="boolean">
+  Checked state (for checkboxes and radios).
+</ParamField>
+
+<ParamField path="disabled" type="boolean">
+  Whether element is disabled.
+</ParamField>
+
+<ParamField path="focused" type="boolean">
+  Whether element has focus.
+</ParamField>
+
+## Common Workflows
+
+### Find Element Reference
+
+```bash
+# Get all interactive elements
+pinchtab snap -i -c
+
+# Find specific element
+pinchtab snap -i | jq '.elements[] | select(.name | contains("Login"))'
+
+# Get reference for button
+REF=$(pinchtab snap -i | jq -r '.elements[] | select(.role=="button" and .name=="Submit") | .ref')
+echo $REF
+```
+
+### Navigation + Snapshot
+
+```bash
+# Navigate
+pinchtab nav https://example.com
+
+# Get page structure
+pinchtab snap -i -c
+
+# Click element
+pinchtab click e5
+
+# See what changed
+pinchtab snap -d
+```
+
+### Extract Links
+
+```bash
+# Get all links
+pinchtab snap -i | jq '.elements[] | select(.role=="link")'
+
+# Get link URLs
+pinchtab snap -i | jq -r '.elements[] | select(.role=="link") | .url'
+
+# Find external links
+pinchtab snap -i | jq '.elements[] | select(.role=="link" and (.url | contains("http")))'
+```
+
+### Extract Form Fields
+
+```bash
+# Get all inputs
+pinchtab snap -i | jq '.elements[] | select(.role=="textbox")'
+
+# Get input names
+pinchtab snap -i | jq -r '.elements[] | select(.role=="textbox") | .name'
+
+# Map inputs to refs
+pinchtab snap -i | jq '.elements[] | select(.role=="textbox") | {name: .name, ref: .ref}'
+```
+
+### Monitor Changes
+
+```bash
+# Initial snapshot
+pinchtab snap -i > before.json
+
+# Perform actions
+pinchtab click e5
+pinchtab type e12 "text"
+pinchtab press Enter
+
+# Wait for page update
+sleep 2
+
+# Diff snapshot
+pinchtab snap -d
+```
+
+## Scoped Snapshots
+
+Capture only part of the page:
+
+```bash
+# Snapshot main content only
+pinchtab snap -s "#main-content"
+
+# Snapshot navigation
+pinchtab snap -s "nav"
+
+# Snapshot first form
+pinchtab snap -s "form"
+
+# Snapshot specific div
+pinchtab snap -s "div.container"
+```
+
+## Token Optimization
+
+### For LLMs (Claude, GPT, etc.)
+
+```bash
+# Most token-efficient
+pinchtab snap -i -c --max-tokens 2000
+
+# Interactive + compact
+pinchtab snap -i -c
+
+# Scoped to relevant section
+pinchtab snap -i -c -s "#main"
+```
+
+### Token Comparison
+
+| Format | Avg Tokens (for typical page) |
+|--------|-------------------------------|
+| Full tree | ~5,000 |
+| Compact | ~3,000 |
+| Interactive | ~2,000 |
+| Interactive + Compact | ~1,200 |
+| Interactive + Compact + Scoped | ~800 |
+
+## Tab-Specific Snapshots
+
+```bash
+# Snapshot specific tab
+pinchtab snap --tab tab_abc123
+
+# Or use tab command
+pinchtab tab snapshot tab_abc123 -i -c
+```
+
+See [Tab Commands](/cli/tab) for details.
+
+## Snapshot Suggestions
+
+After snapshot, the CLI suggests next actions:
+
+```bash
+pinchtab snap -i
+```
+
+Output:
+```json
+{
+  "elements": [
+    {"ref": "e1", "role": "button", "name": "Sign in"},
+    {"ref": "e2", "role": "link", "name": "Create account"},
+    {"ref": "e3", "role": "textbox", "name": "Email"}
+  ]
+}
+
+💡 Found 3 interactive elements. Try:
+  pinchtab click e1    # button: Sign in
+  pinchtab click e2    # link: Create account
+  pinchtab type e3 <text>    # textbox: Email
+```
+
+## Advanced Usage
+
+### Compare Snapshots
+
+```bash
+# Before
+pinchtab snap -i -c > before.json
+
+# Action
+pinchtab click e5
+sleep 1
+
+# After
+pinchtab snap -i -c > after.json
+
+# Diff
+diff before.json after.json
+```
+
+### Find Element by Text
+
+```bash
+#!/bin/bash
+
+FIND_TEXT="$1"
+
+if [ -z "$FIND_TEXT" ]; then
+  echo "Usage: $0 <search-text>"
+  exit 1
+fi
+
+REF=$(pinchtab snap -i | jq -r ".elements[] | select(.name | contains(\"$FIND_TEXT\")) | .ref" | head -1)
+
+if [ -n "$REF" ]; then
+  echo "Found: $REF"
+  pinchtab snap -i | jq ".elements[] | select(.ref==\"$REF\")"
+else
+  echo "Not found: $FIND_TEXT"
+  exit 1
+fi
+```
+
+Usage:
+```bash
+chmod +x find-element.sh
+./find-element.sh "Login"
+```
+
+### Extract All Buttons
+
+```bash
+pinchtab snap -i | jq -r '.elements[] | select(.role=="button") | "\(.ref): \(.name)"'
+```
+
+Output:
+```
+e1: Sign in
+e2: Create account
+e5: Submit
+e8: Cancel
+```
+
+### Count Element Types
+
+```bash
+pinchtab snap -i | jq '[.elements[].role] | group_by(.) | map({role: .[0], count: length})'
+```
+
+Output:
+```json
+[
+  {"role": "button", "count": 5},
+  {"role": "link", "count": 12},
+  {"role": "textbox", "count": 3}
+]
+```
+
+## Error Handling
+
+### Empty Snapshot
+
+```json
+{
+  "elements": []
+}
+```
+
+Reasons:
+- Page hasn't loaded yet
+- Page has no interactive elements
+- Selector matched nothing (with `-s`)
+
+Solution:
+```bash
+# Wait for page
+sleep 2
+pinchtab snap -i
+
+# Or try without filter
+pinchtab snap
+```
+
+### Timeout
+
+```
+snapshot timeout after 30s
+```
+
+Solution:
+```bash
+# Increase timeout
+export BRIDGE_TIMEOUT=60
+pinchtab
+```
+
+## Next Steps
+
+<CardGroup cols={2}>
+  <Card title="Actions" icon="hand-pointer" href="/cli/action">
+    Use element references for interactions
+  </Card>
+  
+  <Card title="Navigation" icon="compass" href="/cli/navigate">
+    Navigate pages before snapshotting
+  </Card>
+  
+  <Card title="Text Extraction" icon="file-text" href="/cli/text">
+    Extract readable text content
+  </Card>
+  
+  <Card title="Screenshots" icon="image" href="/cli/screenshot">
+    Capture visual screenshots
+  </Card>
+</CardGroup>

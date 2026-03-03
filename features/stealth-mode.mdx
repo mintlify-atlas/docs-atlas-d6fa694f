@@ -1,0 +1,568 @@
+---
+title: 'Stealth Mode & Fingerprint Rotation'
+description: 'Bypass bot detection with advanced stealth capabilities'
+---
+
+PinchTab includes **built-in stealth features** to help bypass bot detection systems and rotate browser fingerprints.
+
+## Overview
+
+Stealth mode provides:
+- WebDriver property hiding
+- User agent rotation
+- Canvas fingerprint noise
+- Plugin spoofing
+- WebGL vendor override
+- Timezone and language spoofing
+- Hardware metrics randomization
+
+<Info>
+Stealth features are automatically injected into every page load via Chrome DevTools Protocol
+</Info>
+
+## Stealth Levels
+
+Configure stealth intensity via environment variable:
+
+```bash
+# Light (default) - Minimal overhead
+BRIDGE_STEALTH=light pinchtab
+
+# Medium - Balanced protection
+BRIDGE_STEALTH=medium pinchtab
+
+# Full - Maximum stealth (slower)
+BRIDGE_STEALTH=full pinchtab
+```
+
+```go
+// Source: docs/references/configuration.md:22-27
+// BRIDGE_STEALTH options:
+// - light:  Basic patches (default, minimal overhead)
+// - medium: More aggressive patches (some overhead)
+// - full:   Maximum stealth (significant overhead, slowest)
+```
+
+### Stealth Score
+
+Get current stealth status:
+
+```bash
+curl http://localhost:9867/stealth/status | jq .
+```
+
+**Response:**
+```json
+{
+  "level": "high",
+  "score": 93,
+  "features": {
+    "automation_controlled": true,
+    "webdriver_hidden": true,
+    "chrome_headless_new": true,
+    "user_agent_override": true,
+    "webgl_vendor_override": true,
+    "plugins_spoofed": true,
+    "languages_spoofed": true,
+    "webrtc_leak_prevented": true,
+    "timezone_spoofed": true,
+    "canvas_noise": true,
+    "font_spoofing": true,
+    "hardware_concurrency": true,
+    "device_memory": true
+  },
+  "chrome_flags": [
+    "--disable-features=IsolateOrigins",
+    "--disable-site-isolation-trials",
+    "--disable-web-security"
+  ],
+  "headless_mode": false,
+  "user_agent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7)...",
+  "recommendations": [
+    "Stealth mode is well configured"
+  ]
+}
+```
+
+```go
+// Source: internal/handlers/stealth.go:109-121
+stealthScore := (enabledCount * 100) / len(features)
+
+switch {
+case stealthScore >= 80:
+    level = "high"
+case stealthScore >= 50:
+    level = "medium"
+case stealthScore >= 30:
+    level = "basic"
+default:
+    level = "minimal"
+}
+```
+
+## Stealth Features
+
+### WebDriver Detection Prevention
+
+Hides `navigator.webdriver` property:
+
+```javascript
+// Without stealth:
+navigator.webdriver === true  // Bot detected!
+
+// With stealth:
+navigator.webdriver === undefined  // Looks like real browser
+```
+
+```go
+// Source: internal/bridge/init.go:147-178
+// Stealth script injected on every page:
+stealthSeed := rand.Intn(1000000000)
+seededScript := fmt.Sprintf(
+    "var __pinchtab_seed = %d;\nvar __pinchtab_stealth_level = %q;\n",
+    stealthSeed, cfg.StealthLevel
+) + assets.StealthScript
+
+// Inject via CDP:
+if _, err := page.AddScriptToEvaluateOnNewDocument(stealthScript).Do(ctx); err != nil {
+    return fmt.Errorf("failed to inject stealth script: %w", err)
+}
+```
+
+### Plugin Spoofing
+
+Populates `navigator.plugins` with realistic fake plugins:
+
+```javascript
+// Without stealth (headless):
+navigator.plugins.length === 0  // Suspicious!
+
+// With stealth:
+navigator.plugins.length === 5  // PDF, Flash, etc.
+```
+
+### Canvas Fingerprinting Protection
+
+Adds noise to canvas operations:
+
+```javascript
+const canvas = document.createElement('canvas');
+const ctx = canvas.getContext('2d');
+ctx.fillText('test', 10, 10);
+const data = canvas.toDataURL();
+// Returns slightly different hash each time (noise applied)
+```
+
+<Note>
+Canvas noise is subtle enough to pass fingerprinting but prevent exact matching
+</Note>
+
+### Chrome Runtime Injection
+
+Defines `window.chrome.runtime` to mimic real Chrome:
+
+```javascript
+// Without stealth:
+window.chrome === undefined  // Not Chrome!
+
+// With stealth:
+window.chrome.runtime !== undefined  // Looks like Chrome
+```
+
+## Fingerprint Rotation
+
+Dynamically change browser fingerprint mid-session:
+
+### Rotate User Agent
+
+```bash
+# Rotate to Windows Chrome
+curl -X POST http://localhost:9867/fingerprint/rotate \
+  -H "Content-Type: application/json" \
+  -d '{
+    "tabId": "tab_abc123",
+    "os": "windows",
+    "browser": "chrome"
+  }'
+```
+
+**Response:**
+```json
+{
+  "status": "rotated",
+  "fingerprint": {
+    "userAgent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
+    "platform": "Win32",
+    "vendor": "Google Inc.",
+    "screenWidth": 1920,
+    "screenHeight": 1080,
+    "language": "en-US",
+    "timezoneOffset": -300,
+    "cpuCores": 8,
+    "memory": 8
+  }
+}
+```
+
+### Supported Platforms
+
+```go
+// Source: internal/handlers/stealth.go:266-291
+osConfigs := map[string]map[string]fingerprint{
+    "windows": {
+        "chrome": {
+            UserAgent: "Mozilla/5.0 (Windows NT 10.0; Win64; x64)...",
+            Platform:  "Win32",
+            Vendor:    "Google Inc.",
+        },
+        "edge": {
+            UserAgent: "Mozilla/5.0 (Windows NT 10.0; Win64; x64)... Edg/...",
+            Platform:  "Win32",
+        },
+    },
+    "mac": {
+        "chrome": {
+            UserAgent: "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7)...",
+            Platform:  "MacIntel",
+        },
+        "safari": {
+            UserAgent: "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7)... Safari/...",
+            Platform:  "MacIntel",
+            Vendor:    "Apple Computer, Inc.",
+        },
+    },
+}
+```
+
+<CardGroup cols={2}>
+  <Card title="Windows Chrome" icon="windows">
+    Most common desktop fingerprint
+  </Card>
+  <Card title="Windows Edge" icon="edge">
+    Alternative Windows browser
+  </Card>
+  <Card title="macOS Chrome" icon="chrome">
+    macOS with Chrome
+  </Card>
+  <Card title="macOS Safari" icon="safari">
+    Native macOS browser
+  </Card>
+</CardGroup>
+
+### Random Fingerprint
+
+```bash
+# Let PinchTab choose randomly (70% Windows, 30% Mac)
+curl -X POST http://localhost:9867/fingerprint/rotate \
+  -d '{"tabId": "tab_abc123", "os": "random"}'
+```
+
+```go
+// Source: internal/handlers/stealth.go:293-300
+os := req.OS
+if os == "random" {
+    if rand.Float64() < 0.7 {
+        os = "windows"  // 70% chance
+    } else {
+        os = "mac"      // 30% chance
+    }
+}
+```
+
+### Screen Resolution Rotation
+
+Randomize screen dimensions:
+
+```go
+// Source: internal/handlers/stealth.go:315-328
+screens := [][]int{
+    {1920, 1080},  // Full HD
+    {1366, 768},   // Laptop
+    {1536, 864},   // HD+
+    {1440, 900},   // MacBook
+    {2560, 1440},  // QHD
+}
+
+if req.Screen == "random" {
+    screen := screens[rand.Intn(len(screens))]
+    fp.ScreenWidth = screen[0]
+    fp.ScreenHeight = screen[1]
+}
+```
+
+### Hardware Randomization
+
+```go
+// Source: internal/handlers/stealth.go:342-343
+fp.CPUCores = 4 + rand.Intn(4)*2  // 4, 6, 8, 10, 12
+fp.Memory = 4 + rand.Intn(4)*2    // 4, 6, 8, 10, 12 GB
+```
+
+## Complete Rotation Example
+
+```bash
+#!/bin/bash
+
+# Start instance
+INST=$(pinchtab instance start --mode headless | jq -r .id)
+
+# Create tab
+TAB=$(curl -s -X POST http://localhost:9867/instances/$INST/tabs/open | jq -r .tabId)
+
+# Initial fingerprint (default)
+curl -s -X POST http://localhost:9867/tabs/$TAB/evaluate \
+  -d '{"expression":"navigator.userAgent"}' | jq -r .result
+# Mozilla/5.0 (X11; Linux x86_64)...
+
+# Rotate to Windows
+curl -s -X POST http://localhost:9867/fingerprint/rotate \
+  -d '{
+    "tabId":"'$TAB'",
+    "os":"windows",
+    "browser":"chrome",
+    "screen":"random"
+  }'
+
+# Verify new fingerprint
+curl -s -X POST http://localhost:9867/tabs/$TAB/evaluate \
+  -d '{"expression":"navigator.userAgent"}' | jq -r .result
+# Mozilla/5.0 (Windows NT 10.0; Win64; x64)...
+
+curl -s -X POST http://localhost:9867/tabs/$TAB/evaluate \
+  -d '{"expression":"navigator.platform"}' | jq -r .result
+# Win32
+
+curl -s -X POST http://localhost:9867/tabs/$TAB/evaluate \
+  -d '{"expression":"screen.width"}' | jq -r .result
+# 1536 (randomized)
+```
+
+## Fingerprint Persistence
+
+<Steps>
+  <Step title="Apply fingerprint">
+    POST /fingerprint/rotate sets CDP overrides
+  </Step>
+  <Step title="Inject script">
+    JavaScript overrides screen/hardware properties
+  </Step>
+  <Step title="Navigate">
+    New pages inherit fingerprint automatically
+  </Step>
+  <Step title="Persist until rotation">
+    Fingerprint remains until next rotation or tab close
+  </Step>
+</Steps>
+
+```go
+// Source: internal/handlers/stealth.go:204-221
+// CDP-level override (persists across navigations):
+err := emulation.SetUserAgentOverride(fp.UserAgent).
+    WithPlatform(fp.Platform).
+    WithAcceptLanguage(fp.Language).
+    Do(ctx)
+
+// JavaScript override (re-injected on each page):
+script := fmt.Sprintf(`
+  Object.defineProperty(screen, 'width', { get: () => %d });
+  Object.defineProperty(navigator, 'hardwareConcurrency', { get: () => %d });
+`, fp.ScreenWidth, fp.CPUCores)
+
+page.AddScriptToEvaluateOnNewDocument(script).Do(ctx)
+```
+
+## Chrome Version Preservation
+
+Fingerprint rotation **preserves Chrome version**:
+
+```go
+// Source: tests/integration/config_test.go:104-107
+// Chrome version is preserved after fingerprint rotation
+// (fingerprint rotation should preserve Chrome version from BRIDGE_CHROME_VERSION)
+if initialVersion != rotatedVersion {
+    t.Errorf("expected Chrome version to be preserved")
+}
+```
+
+**Before rotation:**
+```
+Chrome/120.0.6099.109
+```
+
+**After rotation:**
+```
+Chrome/120.0.6099.109  (same version)
+```
+
+<Tip>
+This ensures consistency and avoids detection based on version mismatches
+</Tip>
+
+## Stealth Recommendations
+
+Get personalized recommendations:
+
+```go
+// Source: internal/handlers/stealth.go:147-173
+func (h *Handlers) getStealthRecommendations(features map[string]bool) []string {
+    recommendations := []string{}
+    
+    if !features["user_agent_override"] {
+        recommendations = append(recommendations, "Enable user agent rotation")
+    }
+    if !features["canvas_noise"] {
+        recommendations = append(recommendations, "Add canvas fingerprint noise")
+    }
+    if !features["webrtc_leak_prevented"] {
+        recommendations = append(recommendations, "Block WebRTC to prevent IP leaks")
+    }
+    // ...
+    
+    if len(recommendations) == 0 {
+        recommendations = append(recommendations, "Stealth mode is well configured")
+    }
+    
+    return recommendations
+}
+```
+
+## Testing Stealth
+
+Verify stealth features are working:
+
+```bash
+# Navigate to bot detection test site
+curl -X POST http://localhost:9867/tabs/$TAB/navigate \
+  -d '{"url":"https://bot.sannysoft.com"}'
+
+sleep 3
+
+# Check WebDriver detection
+curl -s -X POST http://localhost:9867/tabs/$TAB/evaluate \
+  -d '{"expression":"navigator.webdriver"}' | jq .result
+# null (not detected)
+
+# Check plugins
+curl -s -X POST http://localhost:9867/tabs/$TAB/evaluate \
+  -d '{"expression":"navigator.plugins.length"}' | jq .result
+# 5 (spoofed)
+
+# Check chrome runtime
+curl -s -X POST http://localhost:9867/tabs/$TAB/evaluate \
+  -d '{"expression":"typeof window.chrome"}' | jq .result
+# "object" (injected)
+```
+
+## Performance Impact
+
+### Stealth Overhead
+
+| Level | Overhead | Use Case |
+|-------|----------|----------|
+| `light` | ~5% | Default, production |
+| `medium` | ~15% | Moderate detection |
+| `full` | ~30% | Aggressive detection |
+
+### Optimize Performance
+
+```bash
+# Use light stealth for speed
+BRIDGE_STEALTH=light pinchtab
+
+# Only rotate fingerprint when needed
+# (Don't rotate on every navigation)
+```
+
+## Common Workflows
+
+### Rotate Per Target
+
+```bash
+# Different fingerprint for each target site
+curl -X POST http://localhost:9867/fingerprint/rotate \
+  -d '{"tabId":"'$TAB1'","os":"windows"}'
+
+curl -X POST http://localhost:9867/fingerprint/rotate \
+  -d '{"tabId":"'$TAB2'","os":"mac"}'
+```
+
+### Periodic Rotation
+
+```bash
+# Rotate every N requests
+for i in {1..10}; do
+  if [ $((i % 5)) -eq 0 ]; then
+    curl -X POST http://localhost:9867/fingerprint/rotate \
+      -d '{"tabId":"'$TAB'","os":"random"}'
+  fi
+  
+  # Make request
+  curl -X POST http://localhost:9867/tabs/$TAB/navigate \
+    -d '{"url":"https://example.com/page'$i'"}'
+done
+```
+
+## Best Practices
+
+### Use Realistic Fingerprints
+
+✅ **Good:**
+```bash
+# Common combinations
+curl -X POST http://localhost:9867/fingerprint/rotate \
+  -d '{"os":"windows","browser":"chrome"}'
+```
+
+❌ **Bad:**
+```bash
+# Unusual combination (raises suspicion)
+{"os":"mac","browser":"edge"}  # Edge rarely used on Mac
+```
+
+### Match Fingerprint to Target
+
+```bash
+# Scraping US sites
+curl -X POST http://localhost:9867/fingerprint/rotate \
+  -d '{
+    "os":"windows",
+    "language":"en-US",
+    "timezone":-300
+  }'
+
+# Scraping EU sites
+curl -X POST http://localhost:9867/fingerprint/rotate \
+  -d '{
+    "os":"windows",
+    "language":"de-DE",
+    "timezone":-60
+  }'
+```
+
+### Combine with Profiles
+
+```bash
+# Use persistent profile + fingerprint rotation
+pinchtab profile create stealth-profile
+INST=$(curl -s -X POST http://localhost:9867/instances/start \
+  -d '{"profileId":"stealth-profile"}' | jq -r .id)
+
+# Cookies persist across fingerprint rotations
+```
+
+## Next Steps
+
+<CardGroup cols={2}>
+  <Card title="Browser Profiles" href="/features/profiles" icon="user">
+    Combine stealth with persistent sessions
+  </Card>
+  <Card title="Headless Mode" href="/features/headless-vs-headed" icon="eye-slash">
+    Run stealth in headless mode
+  </Card>
+  <Card title="Bot Detection Guide" href="/guides/bot-detection" icon="shield">
+    Advanced anti-detection techniques
+  </Card>
+  <Card title="Stealth API" href="/api-reference/stealth" icon="code">
+    Complete stealth API reference
+  </Card>
+</CardGroup>

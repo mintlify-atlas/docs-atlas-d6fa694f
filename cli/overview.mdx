@@ -1,0 +1,254 @@
+---
+title: 'CLI Overview'
+description: 'PinchTab command-line interface for browser automation'
+icon: 'terminal'
+---
+
+# PinchTab CLI
+
+The PinchTab CLI provides a powerful command-line interface for controlling Chrome browsers programmatically. It's designed for AI agents, automation scripts, and developers who need reliable browser control from the terminal.
+
+## Quick Start
+
+<Steps>
+  <Step title="Start the server">
+    ```bash
+    pinchtab
+    ```
+    The server starts on port 9867 by default.
+  </Step>
+  
+  <Step title="Navigate to a website">
+    ```bash
+    pinchtab nav https://example.com
+    ```
+  </Step>
+  
+  <Step title="Get page structure">
+    ```bash
+    pinchtab snap -i -c
+    ```
+    Returns interactive elements in a compact, token-efficient format.
+  </Step>
+  
+  <Step title="Interact with elements">
+    ```bash
+    pinchtab click e5
+    pinchtab type e12 "hello world"
+    pinchtab press Enter
+    ```
+  </Step>
+</Steps>
+
+## Installation
+
+PinchTab is distributed as a single binary. Download the latest release for your platform:
+
+<CodeGroup>
+```bash macOS (Intel)
+curl -L https://github.com/pinchtab/pinchtab/releases/latest/download/pinchtab-darwin-amd64 -o pinchtab
+chmod +x pinchtab
+sudo mv pinchtab /usr/local/bin/
+```
+
+```bash macOS (Apple Silicon)
+curl -L https://github.com/pinchtab/pinchtab/releases/latest/download/pinchtab-darwin-arm64 -o pinchtab
+chmod +x pinchtab
+sudo mv pinchtab /usr/local/bin/
+```
+
+```bash Linux
+curl -L https://github.com/pinchtab/pinchtab/releases/latest/download/pinchtab-linux-amd64 -o pinchtab
+chmod +x pinchtab
+sudo mv pinchtab /usr/local/bin/
+```
+</CodeGroup>
+
+## Architecture
+
+PinchTab operates in two main modes:
+
+### Dashboard Mode (Default)
+
+When you run `pinchtab` without arguments, it starts a dashboard server that:
+- Manages multiple browser instances (profiles)
+- Provides a web UI at `http://localhost:9867/dashboard`
+- Exposes HTTP and WebSocket APIs
+- Orchestrates instance lifecycle
+
+```bash
+pinchtab
+# Server starts on :9867
+# Dashboard: http://localhost:9867/dashboard
+```
+
+### CLI Mode
+
+CLI commands communicate with the running dashboard server:
+
+```bash
+pinchtab nav https://github.com
+pinchtab snap -i -c
+pinchtab click e5
+```
+
+<Note>
+The CLI requires a running server. If no server is running, you'll see:
+```
+❌ Pinchtab server is not running on http://127.0.0.1:9867
+
+To start the server:
+  pinchtab                    # Run in foreground
+  pinchtab &                  # Run in background
+```
+</Note>
+
+## Common Workflows
+
+### Basic Navigation and Interaction
+
+```bash
+# Terminal 1: Start server
+pinchtab
+
+# Terminal 2: Use CLI
+pinchtab nav https://github.com/pinchtab/pinchtab
+pinchtab snap -i -c | jq '.elements[] | select(.role=="link")'
+pinchtab click e5
+pinchtab screenshot -o screenshot.png
+```
+
+### Multi-Instance Workflow
+
+```bash
+# Launch a headed instance
+INST=$(pinchtab instance launch --mode headed | jq -r .id)
+echo "Instance: $INST"
+
+# Use the instance
+pinchtab --instance $INST nav https://example.com
+pinchtab --instance $INST snap -i
+
+# Stop when done
+pinchtab instance stop $INST
+```
+
+### Profile Management
+
+```bash
+# List available profiles
+pinchtab profiles
+
+# Connect to a profile (get its URL)
+pinchtab connect my-profile
+# Returns: http://localhost:9868
+
+# Use profile instance
+URL=$(pinchtab connect my-profile --json | jq -r .url)
+curl $URL/snapshot
+```
+
+## Output Formats
+
+All commands output JSON by default:
+
+```bash
+pinchtab snap -i -c
+```
+
+```json
+{
+  "format": "compact",
+  "filter": "interactive",
+  "elements": [
+    {"ref": "e1", "role": "button", "name": "Sign in"},
+    {"ref": "e2", "role": "link", "name": "Documentation"},
+    {"ref": "e3", "role": "textbox", "name": "Search"}
+  ]
+}
+```
+
+Pipe through `jq` for filtering:
+
+```bash
+# Get all button references
+pinchtab snap -i | jq -r '.elements[] | select(.role=="button") | .ref'
+
+# Count interactive elements
+pinchtab snap -i | jq '.elements | length'
+
+# Find element by name
+pinchtab snap -i | jq '.elements[] | select(.name | contains("Sign in"))'
+```
+
+## Error Handling
+
+The CLI uses standard exit codes:
+
+<ParamField path="Exit Code 0" type="Success">
+  Command completed successfully
+</ParamField>
+
+<ParamField path="Exit Code 1" type="User Error">
+  Bad arguments, missing required parameters, or file not found
+</ParamField>
+
+<ParamField path="Exit Code 2" type="Server Error">
+  Server returned 500, connection refused, or network error
+</ParamField>
+
+<ParamField path="Exit Code 3" type="Timeout">
+  Request exceeded timeout limit
+</ParamField>
+
+<ParamField path="Exit Code 4" type="Not Found">
+  Instance, tab, or resource not found
+</ParamField>
+
+Example error handling in scripts:
+
+```bash
+if ! pinchtab nav https://example.com; then
+  echo "Navigation failed"
+  exit 1
+fi
+
+# Check exit code explicitly
+pinchtab click e5
+if [ $? -eq 4 ]; then
+  echo "Element not found"
+fi
+```
+
+## Help and Version
+
+```bash
+# Show help
+pinchtab help
+pinchtab --help
+pinchtab -h
+
+# Show version
+pinchtab --version
+pinchtab -v
+```
+
+## Next Steps
+
+<CardGroup cols={2}>
+  <Card title="Configuration" icon="gear" href="/cli/configuration">
+    Environment variables and config file setup
+  </Card>
+  
+  <Card title="Server Commands" icon="server" href="/cli/server">
+    Starting and managing the PinchTab server
+  </Card>
+  
+  <Card title="Navigation" icon="compass" href="/cli/navigate">
+    Navigate to URLs and manage page loading
+  </Card>
+  
+  <Card title="Snapshots" icon="camera" href="/cli/snapshot">
+    Capture accessibility tree snapshots
+  </Card>
+</CardGroup>

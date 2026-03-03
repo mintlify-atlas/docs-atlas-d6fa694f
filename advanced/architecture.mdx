@@ -1,0 +1,343 @@
+---
+title: Architecture
+description: System architecture and design principles of PinchTab
+---
+
+PinchTab is a 12MB Go binary that wraps Chrome DevTools Protocol (CDP) to provide AI agents with browser control via a simple REST API.
+
+## Architecture Overview
+
+<CardGroup cols={2}>
+  <Card title="Self-hosted mode" icon="server">
+    PinchTab launches and manages its own Chrome instance
+  </Card>
+  <Card title="Remote Chrome mode" icon="cloud">
+    PinchTab connects to an existing Chrome instance via CDP_URL
+  </Card>
+</CardGroup>
+
+### Self-hosted Mode (Default)
+
+```text
+┌─────────────┐     HTTP      ┌──────────────┐      CDP       ┌──────────────┐
+│   AI Agent  │ ────────────▶ │   Pinchtab   │ ─────────────▶ │    Chrome    │
+│  (any LLM)  │ ◀──────────── │  (Go binary) │ ◀───────────── │ self-launched │
+└─────────────┘    JSON/text  └──────────────┘   WebSocket    └──────────────┘
+```
+
+### Remote Chrome Mode (CDP_URL)
+
+```text
+┌─────────────┐     HTTP      ┌──────────────┐      CDP       ┌──────────────┐
+│  Multiple   │ ────────────▶ │  Multiple    │ ─────────────▶ │  Shared      │
+│  Agents     │ ◀──────────── │  Pinchtab    │ ◀───────────── │  Chrome      │
+│             │    JSON/text  │  instances   │   WebSocket    │  instance    │
+└─────────────┘               └──────────────┘                └──────────────┘
+```
+
+<Note>
+Agents never touch CDP directly. They send HTTP requests and receive JSON responses. The accessibility tree (a11y) is the primary interface — not screenshots, not raw DOM.
+</Note>
+
+## Design Principles
+
+<Steps>
+  <Step title="A11y tree over screenshots">
+    4x cheaper in tokens, works with any LLM
+  </Step>
+  <Step title="HTTP over WebSocket">
+    Stateless requests, no connection management for agents
+  </Step>
+  <Step title="Ref stability">
+    Snapshot refs (e0, e1...) are cached and reused by action endpoints
+  </Step>
+  <Step title="Self-contained">
+    Launches its own Chrome, manages its own state, zero config needed
+  </Step>
+  <Step title="Decoupled architecture">
+    Interface-driven design for testability and maintainability
+  </Step>
+</Steps>
+
+## Project Layout
+
+The project follows the standard Go `internal/` pattern to ensure encapsulation and clean boundaries:
+
+```text
+pinchtab/
+├── cmd/pinchtab/        # Application entry points and CLI commands
+├── internal/
+│   ├── bridge/          # Core CDP logic, tab management, and state
+│   ├── handlers/        # HTTP API handlers and middleware
+│   ├── orchestrator/    # Multi-instance lifecycle and process management
+│   ├── profiles/        # Chrome profile management and identity discovery
+│   ├── dashboard/       # Backend logic and static assets for web UI
+│   ├── assets/          # Centralized embedded files (stealth scripts, HTML)
+│   ├── human/           # Human-like interaction simulation (Bezier mouse, typing)
+│   ├── config/          # Centralized configuration management
+│   └── web/             # Shared HTTP and JSON utilities
+├── Dockerfile           # Alpine + Chromium container image
+└── scripts/             # Deployment and automation scripts
+```
+
+## Core Components
+
+### Bridge (`internal/bridge`)
+
+The central state holder. Owns the Chrome browser context, tab registry, and snapshot caches. It implements the `BridgeAPI` interface.
+
+**Key responsibilities:**
+
+- **Tab lifecycle** — `CreateTab`, `CloseTab`, `TabContext` (resolve "" to first tab)
+- **Ref caching** — Each tab's last snapshot is cached. When `/action` receives `ref: "e5"`, it looks up the cached `BackendDOMNodeID` without re-fetching the a11y tree
+- **State logic** — Diffing snapshots and managing session persistence (`SaveState`/`RestoreState`)
+
+<CodeGroup>
+```go Tab management
+// Create a new tab
+tabID := bridge.CreateTab(ctx, "https://example.com")
+
+// Get tab context (auto-resolves to first tab if ID is empty)
+tabCtx := bridge.TabContext(ctx, "")
+
+// Close tab
+bridge.CloseTab(ctx, tabID)
+```
+
+```go Ref caching
+// When snapshot is taken, refs are cached
+snapshot := bridge.GetSnapshot(ctx, tabID)
+// snapshot contains: e0, e1, e2... → BackendDOMNodeID mapping
+
+// Action endpoints reuse cached refs
+bridge.ClickElement(ctx, tabID, "e5") // Uses cached node ID
+```
+</CodeGroup>
+
+### Orchestrator (`internal/orchestrator`)
+
+Manages multiple isolated browser instances. Uses a `HostRunner` interface to decouple business logic from OS process management.
+
+**Key responsibilities:**
+
+- **Instance registry** — Tracking running instances, their ports, and statuses
+- **Process management** — Spawning, signaling, and stopping instances
+- **Health monitoring** — Probing instance health via HTTP
+
+See: [`internal/orchestrator/orchestrator.go`](https://github.com/pinchtab/pinchtab/blob/main/internal/orchestrator/orchestrator.go)
+
+### Profiles (`internal/profiles`)
+
+Handles Chrome user data directories and metadata.
+
+**Key responsibilities:**
+
+- **CRUD operations** — Creating, importing, and resetting profiles
+- **Identity discovery** — Parsing internal Chrome JSON files to find user identity info
+- **Activity tracking** — Recording and analyzing agent actions per profile
+
+See: [`internal/profiles/profiles.go`](https://github.com/pinchtab/pinchtab/blob/main/internal/profiles/profiles.go)
+
+### Snapshot Pipeline (`internal/bridge/snapshot.go`)
+
+The accessibility tree is PinchTab's core abstraction. Flow:
+
+```text
+Chrome a11y tree (CDP)
+       │
+       ▼
+  Raw JSON parse (RawAXNode)     ← Manual parsing to avoid cdproto crash
+       │                            on "uninteresting" PropertyName values
+       ▼
+  Flatten to []A11yNode           ← DFS walk, assign refs (e0, e1, e2...)
+       │
+       ├──▶ JSON (default)        ← Full structured output
+       ├──▶ Text (indented tree)  ← Low-token format for agents
+       └──▶ YAML                  ← Alternative structured format
+```
+
+<Note>
+**Ref caching:** When `/snapshot` is called, the ref→nodeID mapping is stored per tab. When `/action` receives `{"ref": "e5", "kind": "click"}`, it looks up `e5` in the cache.
+</Note>
+
+### Human Interaction (`internal/human`)
+
+Two main simulation engines for anti-detection:
+
+**`MouseMove`** — Cubic bezier curve from A to B:
+
+- Random control points for natural curvature
+- Step count scales with distance (5-30 steps)
+- Per-step jitter and variable timing
+
+**`Type`** — Keystroke-level simulation:
+
+- Base delay: 80ms/char (40ms in fast mode)
+- Random long pauses ("thinking")
+- Simulated typos and backspace corrections
+
+<CodeGroup>
+```go Mouse movement
+// Natural curved mouse movement from current position to target
+human.MouseMove(ctx, targetX, targetY)
+// Generates bezier curve with random control points
+// Simulates human-like movement with jitter
+```
+
+```go Realistic typing
+// Simulate realistic typing with variable delays
+human.Type(ctx, "Hello world")
+// 80ms base delay per character
+// Random pauses for "thinking"
+// Occasional typos with backspace correction
+```
+</CodeGroup>
+
+## Deployment Modes
+
+### Binary (Recommended)
+
+<CodeGroup>
+```bash Build
+go build -o pinchtab ./cmd/pinchtab
+```
+
+```bash Run
+BRIDGE_TOKEN=secret ./pinchtab
+```
+</CodeGroup>
+
+### Docker
+
+<CodeGroup>
+```bash Build
+docker build -t pinchtab .
+```
+
+```bash Run
+docker run -d -p 9867:9867 -e BRIDGE_TOKEN=secret pinchtab
+```
+</CodeGroup>
+
+## CDP Architecture
+
+PinchTab sits between your tools/agents and Chrome:
+
+```text
+┌─────────────────────────────────────────┐
+│         Your Tool/Agent                 │
+│   (CLI, curl, Python, Node.js, etc.)    │
+└──────────────┬──────────────────────────┘
+               │
+               │ HTTP
+               ↓
+┌─────────────────────────────────────────┐
+│    PinchTab HTTP Server (Go)            │
+│  ┌─────────────────────────────────┐    │
+│  │  Tab Manager                    │    │
+│  │  (tracks tabs + sessions)       │    │
+│  └─────────────────────────────────┘    │
+│  ┌─────────────────────────────────┐    │
+│  │  Chrome DevTools Protocol (CDP) │    │
+│  └─────────────────────────────────┘    │
+└──────────────┬──────────────────────────┘
+               │
+               │ CDP WebSocket
+               ↓
+┌─────────────────────────────────────────┐
+│        Chrome Browser                   │
+│  (Headless, headed, or external)        │
+└─────────────────────────────────────────┘
+```
+
+PinchTab wraps Chrome's DevTools Protocol (CDP) to translate HTTP requests into CDP commands, manage browser state, and deliver structured responses (accessibility trees, screenshots, PDFs) back to your agents.
+
+## Instance Orchestration
+
+The Orchestrator handles the lifecycle of multiple independent Chrome processes:
+
+<CardGroup cols={2}>
+  <Card title="Process Isolation" icon="shield">
+    Each instance runs as a separate OS process with its own PID
+  </Card>
+  <Card title="Health Monitoring" icon="heartbeat">
+    After launching, polls the instance's `/health` endpoint until ready
+  </Card>
+  <Card title="Port Management" icon="network-wired">
+    Ensures each instance is assigned a unique port (9868-9968)
+  </Card>
+  <Card title="Resilience" icon="rotate">
+    Handles Chrome crashes with lock file cleanup and retry logic
+  </Card>
+</CardGroup>
+
+## Pre-Flight Stealth Injection
+
+Before any website loads, PinchTab performs pre-flight injection:
+
+<Steps>
+  <Step title="AddScriptToEvaluateOnNewDocument">
+    The `stealth.js` script is registered to execute *before* any other script on a page
+  </Step>
+  <Step title="Mask navigator.webdriver">
+    Hides automation markers before websites can detect them
+  </Step>
+  <Step title="Spoof hardware identifiers">
+    Randomizes CPU cores, memory, and other hardware fingerprints
+  </Step>
+  <Step title="Environment spoofing">
+    Applies timezone overrides and locale settings immediately after startup
+  </Step>
+</Steps>
+
+See: [`internal/bridge/init.go`](https://github.com/pinchtab/pinchtab/blob/main/internal/bridge/init.go)
+
+## Resilience & Self-Healing
+
+PinchTab includes logic to handle common browser startup failures:
+
+<Accordion title="Lock File Cleanup">
+If Chrome previously crashed, it might leave `SingletonLock` or `SingletonSocket` files that prevent it from restarting. PinchTab automatically detects an "unclean exit" and deletes these locks.
+</Accordion>
+
+<Accordion title="Retry Logic">
+If Chrome fails to start within the `chromeStartTimeout` (15s), PinchTab will clear the session data and attempt one retry to ensure service availability.
+</Accordion>
+
+<Accordion title="Tab Limits">
+Enforces `BRIDGE_MAX_TABS` (default 20) to prevent runaway agents from consuming all memory.
+</Accordion>
+
+<Accordion title="Stale Tab Cleanup">
+Periodically removes tabs that no longer exist in Chrome.
+</Accordion>
+
+See: [`internal/bridge/crash.go`](https://github.com/pinchtab/pinchtab/blob/main/internal/bridge/crash.go)
+
+## Performance Characteristics
+
+| Metric | Value | Notes |
+|--------|-------|-------|
+| Binary size | 12MB | Statically compiled Go binary |
+| Memory per instance | ~300MB | Headless Chrome with 1 tab |
+| Memory per tab | ~50-100MB | Depends on page complexity |
+| Startup time | 2-5s | Chrome initialization |
+| Snapshot latency | 50-200ms | Depends on page size |
+| Token efficiency | 800 tokens/page | vs 10,000+ for screenshots |
+
+## Next Steps
+
+<CardGroup cols={2}>
+  <Card title="CDP Integration" icon="code" href="/advanced/cdp-integration">
+    Learn about remote Chrome mode and CDP_URL
+  </Card>
+  <Card title="Configuration" icon="gear" href="/advanced/configuration">
+    Complete environment variable reference
+  </Card>
+  <Card title="Multi-Instance Guide" icon="layer-group" href="/guides/multi-instance">
+    Running multiple browser instances
+  </Card>
+  <Card title="API Reference" icon="book" href="/api/overview">
+    Complete HTTP API documentation
+  </Card>
+</CardGroup>

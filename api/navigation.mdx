@@ -1,0 +1,522 @@
+---
+title: 'Navigation API'
+description: 'Navigate tabs to URLs'
+---
+
+## Overview
+
+The Navigation API allows you to:
+
+- Navigate tabs to URLs
+- Wait for page load states
+- Block resources (images, media, ads)
+- Control navigation timeouts
+- Wait for specific selectors
+
+## Navigate Tab
+
+Navigate an existing tab to a URL.
+
+```http
+POST /tabs/{id}/navigate
+```
+
+<CodeGroup>
+```bash cURL (Basic)
+curl -X POST http://localhost:9867/tabs/tab_abc123/navigate \
+  -H "Content-Type: application/json" \
+  -d '{"url": "https://example.com"}'
+```
+
+```bash cURL (With options)
+curl -X POST http://localhost:9867/tabs/tab_abc123/navigate \
+  -H "Content-Type: application/json" \
+  -d '{
+    "url": "https://example.com",
+    "timeout": 30,
+    "waitFor": "networkidle",
+    "blockImages": true
+  }'
+```
+
+```python Python
+import requests
+
+# Basic navigation
+resp = requests.post(
+    "http://localhost:9867/tabs/tab_abc123/navigate",
+    json={"url": "https://example.com"}
+)
+result = resp.json()
+print(f"Navigated to: {result['url']}")
+print(f"Title: {result['title']}")
+```
+
+```javascript JavaScript
+const resp = await fetch(
+  "http://localhost:9867/tabs/tab_abc123/navigate",
+  {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ url: "https://example.com" })
+  }
+);
+const result = await resp.json();
+console.log(`Title: ${result.title}`);
+```
+</CodeGroup>
+
+### Request Body
+
+<ParamField path="url" type="string" required>
+  URL to navigate to. Can include protocol or be a bare hostname (e.g., `example.com` → `https://example.com`)
+</ParamField>
+
+<ParamField path="timeout" type="number" default="30">
+  Navigation timeout in seconds (1-120)
+</ParamField>
+
+<ParamField path="waitFor" type="string" default="none">
+  Wait condition: `none`, `dom`, `selector`, `networkidle`
+</ParamField>
+
+<ParamField path="waitSelector" type="string">
+  CSS selector to wait for (required if `waitFor=selector`)
+</ParamField>
+
+<ParamField path="waitTitle" type="number">
+  Wait for title change (seconds, max 30)
+</ParamField>
+
+<ParamField path="blockImages" type="boolean">
+  Block image resources
+</ParamField>
+
+<ParamField path="blockMedia" type="boolean">
+  Block media resources (video, audio)
+</ParamField>
+
+<ParamField path="blockAds" type="boolean">
+  Block known ad domains
+</ParamField>
+
+### Response (200 OK)
+
+```json
+{
+  "tabId": "tab_abc123",
+  "url": "https://example.com",
+  "title": "Example Domain"
+}
+```
+
+### Response Fields
+
+<ResponseField name="tabId" type="string" required>
+  Tab ID that was navigated
+</ResponseField>
+
+<ResponseField name="url" type="string" required>
+  Final URL (may differ from requested URL due to redirects)
+</ResponseField>
+
+<ResponseField name="title" type="string" required>
+  Page title
+</ResponseField>
+
+---
+
+## Wait Conditions
+
+Control when navigation completes using `waitFor`:
+
+### none (default)
+
+Returns as soon as navigation starts. Fastest but may not wait for content.
+
+```json
+{
+  "url": "https://example.com",
+  "waitFor": "none"
+}
+```
+
+### dom
+
+Waits for `document.readyState === "complete"`. Good for most pages.
+
+```json
+{
+  "url": "https://example.com",
+  "waitFor": "dom"
+}
+```
+
+### selector
+
+Waits for a specific CSS selector to be visible. Use for dynamic content.
+
+```json
+{
+  "url": "https://example.com",
+  "waitFor": "selector",
+  "waitSelector": "#content"
+}
+```
+
+### networkidle
+
+Waits for network activity to settle (no requests for ~500ms). Best for SPAs.
+
+```json
+{
+  "url": "https://example.com",
+  "waitFor": "networkidle"
+}
+```
+
+<Note>
+Network idle waits up to ~3 seconds for stability. Use timeouts to prevent hanging.
+</Note>
+
+---
+
+## Resource Blocking
+
+Block resources to speed up navigation and reduce bandwidth:
+
+### Block Images
+
+```bash
+curl -X POST http://localhost:9867/tabs/tab_abc123/navigate \
+  -d '{
+    "url": "https://example.com",
+    "blockImages": true
+  }'
+```
+
+Blocks: `*.jpg`, `*.png`, `*.gif`, `*.webp`, `*.svg`
+
+### Block Media
+
+```bash
+curl -X POST http://localhost:9867/tabs/tab_abc123/navigate \
+  -d '{
+    "url": "https://example.com",
+    "blockMedia": true
+  }'
+```
+
+Blocks: `*.mp4`, `*.webm`, `*.ogg`, `*.mp3`, `*.wav`, images
+
+### Block Ads
+
+```bash
+curl -X POST http://localhost:9867/tabs/tab_abc123/navigate \
+  -d '{
+    "url": "https://example.com",
+    "blockAds": true
+  }'
+```
+
+Blocks known ad domains and trackers.
+
+<Tip>
+Combine blocking options for maximum speed:
+</Tip>
+
+```json
+{
+  "url": "https://example.com",
+  "blockImages": true,
+  "blockMedia": true,
+  "blockAds": true
+}
+```
+
+---
+
+## Examples
+
+### Basic Navigation
+
+```python
+import requests
+
+BASE = "http://localhost:9867"
+
+# Start instance and open tab
+inst = requests.post(f"{BASE}/instances/start",
+    json={"mode": "headed"}).json()
+tab = requests.post(f"{BASE}/instances/{inst['id']}/tabs/open",
+    json={}).json()
+
+tab_id = tab["tabId"]
+
+# Navigate
+resp = requests.post(f"{BASE}/tabs/{tab_id}/navigate",
+    json={"url": "https://example.com"})
+
+result = resp.json()
+print(f"URL: {result['url']}")
+print(f"Title: {result['title']}")
+```
+
+### Wait for Selector
+
+```bash
+curl -X POST http://localhost:9867/tabs/tab_abc123/navigate \
+  -H "Content-Type: application/json" \
+  -d '{
+    "url": "https://github.com",
+    "waitFor": "selector",
+    "waitSelector": ".dashboard",
+    "timeout": 30
+  }'
+```
+
+### Navigate with Resource Blocking
+
+```javascript
+const resp = await fetch(
+  "http://localhost:9867/tabs/tab_abc123/navigate",
+  {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({
+      url: "https://news.ycombinator.com",
+      blockImages: true,
+      blockMedia: true,
+      blockAds: true,
+      waitFor: "dom"
+    })
+  }
+);
+
+const result = await resp.json();
+console.log(`Loaded: ${result.title}`);
+```
+
+### Sequential Navigation
+
+```python
+import requests
+import time
+
+BASE = "http://localhost:9867"
+tab_id = "tab_abc123"
+
+sites = [
+    "https://example.com",
+    "https://google.com",
+    "https://github.com"
+]
+
+for site in sites:
+    print(f"Navigating to {site}...")
+    resp = requests.post(f"{BASE}/tabs/{tab_id}/navigate",
+        json={"url": site, "waitFor": "dom"})
+    
+    result = resp.json()
+    print(f"  Title: {result['title']}")
+    
+    time.sleep(2)  # Wait before next navigation
+```
+
+---
+
+## Error Handling
+
+### Invalid URL (400)
+
+```bash
+curl -X POST http://localhost:9867/tabs/tab_abc123/navigate \
+  -d '{"url":"javascript:alert(1)"}'
+```
+
+**Response:**
+```json
+{
+  "error": "invalid URL scheme: javascript",
+  "statusCode": 400
+}
+```
+
+<Warning>
+Blocked schemes: `javascript:`, `vbscript:`, `data:`
+</Warning>
+
+### Navigation Timeout (500)
+
+```bash
+curl -X POST http://localhost:9867/tabs/tab_abc123/navigate \
+  -d '{"url":"https://example.com","timeout":1}'
+```
+
+**Response:**
+```json
+{
+  "error": "navigate: context deadline exceeded",
+  "statusCode": 500
+}
+```
+
+### Selector Not Found (400)
+
+```bash
+curl -X POST http://localhost:9867/tabs/tab_abc123/navigate \
+  -d '{
+    "url":"https://example.com",
+    "waitFor":"selector",
+    "waitSelector":"#nonexistent"
+  }'
+```
+
+**Response:**
+```json
+{
+  "error": "selector #nonexistent not found",
+  "code": "bad_wait_for",
+  "statusCode": 400
+}
+```
+
+### Tab Not Found (404)
+
+```bash
+curl -X POST http://localhost:9867/tabs/nonexistent/navigate \
+  -d '{"url":"https://example.com"}'
+```
+
+**Response:**
+```json
+{
+  "error": "tab not found",
+  "statusCode": 404
+}
+```
+
+---
+
+## Complete Workflow
+
+```bash
+#!/bin/bash
+
+BASE="http://localhost:9867"
+
+# 1. Start instance
+INST=$(curl -s -X POST $BASE/instances/start \
+  -d '{"mode":"headed"}' | jq -r '.id')
+
+# 2. Open tab
+TAB=$(curl -s -X POST "$BASE/instances/$INST/tabs/open" \
+  -d '{}' | jq -r '.tabId')
+
+echo "Tab: $TAB"
+
+# 3. Navigate to login page
+echo "Navigating to login..."
+curl -s -X POST "$BASE/tabs/$TAB/navigate" \
+  -d '{
+    "url":"https://example.com/login",
+    "waitFor":"selector",
+    "waitSelector":"#email",
+    "timeout":30
+  }' | jq '{url, title}'
+
+# 4. Get page structure
+echo -e "\nGetting page structure..."
+curl -s "$BASE/tabs/$TAB/snapshot?filter=interactive" \
+  | jq '.nodes[] | {ref, role, name}' | head -10
+
+# 5. Navigate to another page
+echo -e "\nNavigating to dashboard..."
+curl -s -X POST "$BASE/tabs/$TAB/navigate" \
+  -d '{
+    "url":"https://example.com/dashboard",
+    "waitFor":"networkidle",
+    "blockImages":true
+  }' | jq '{url, title}'
+
+# 6. Cleanup
+curl -s -X POST "$BASE/instances/$INST/stop"
+```
+
+---
+
+## Best Practices
+
+### Use Appropriate Wait Conditions
+
+- **Static pages**: `waitFor: "dom"`
+- **SPAs (React, Vue)**: `waitFor: "networkidle"`
+- **Specific content**: `waitFor: "selector"` with `waitSelector`
+- **Fast navigation**: `waitFor: "none"` (but check status manually)
+
+### Set Reasonable Timeouts
+
+```json
+{
+  "url": "https://example.com",
+  "timeout": 30,  // 30 seconds is usually enough
+  "waitFor": "dom"
+}
+```
+
+Default timeout is 30 seconds. Increase for slow pages, decrease for fast pages.
+
+### Block Resources for Speed
+
+```json
+{
+  "url": "https://example.com",
+  "blockImages": true,   // Faster page load
+  "blockMedia": true,    // Save bandwidth
+  "blockAds": true       // Cleaner content
+}
+```
+
+### Handle Redirects
+
+The response `url` field contains the final URL after redirects:
+
+```python
+resp = requests.post(f"{BASE}/tabs/{tab_id}/navigate",
+    json={"url": "http://example.com"})
+
+result = resp.json()
+print(f"Requested: http://example.com")
+print(f"Final URL: {result['url']}")  # May be https://example.com
+```
+
+---
+
+## GET Method Support
+
+Navigation also supports GET requests for convenience:
+
+```bash
+curl "http://localhost:9867/navigate?url=https://example.com&tabId=tab_abc123"
+```
+
+This is equivalent to the POST method but uses query parameters.
+
+---
+
+## Next Steps
+
+<CardGroup cols={2}>
+  <Card title="Snapshot API" icon="camera" href="/api/snapshot">
+    Get page structure after navigation
+  </Card>
+  <Card title="Actions API" icon="hand-pointer" href="/api/actions">
+    Interact with page elements
+  </Card>
+  <Card title="Screenshots" icon="image" href="/api/screenshots">
+    Capture page screenshots
+  </Card>
+  <Card title="Evaluation" icon="code" href="/api/evaluation">
+    Execute JavaScript in pages
+  </Card>
+</CardGroup>

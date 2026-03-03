@@ -1,0 +1,482 @@
+---
+title: 'PDF Export API'
+description: 'Export pages as PDF documents'
+---
+
+## Overview
+
+The PDF API exports web pages to PDF format with customizable options for:
+
+- Page size and orientation
+- Margins
+- Headers and footers
+- Page ranges
+- Accessibility features
+
+## Export to PDF
+
+```http
+GET /tabs/{id}/pdf
+POST /tabs/{id}/pdf
+```
+
+<CodeGroup>
+```bash Basic
+curl "http://localhost:9867/tabs/tab_abc123/pdf" > output.pdf
+```
+
+```bash Landscape
+curl "http://localhost:9867/tabs/tab_abc123/pdf?landscape=true" > output.pdf
+```
+
+```bash Custom Options
+curl -X POST http://localhost:9867/tabs/tab_abc123/pdf \
+  -H "Content-Type: application/json" \
+  -d '{
+    "landscape": true,
+    "paperWidth": 11,
+    "paperHeight": 8.5,
+    "marginTop": 0.5,
+    "scale": 0.9
+  }' > output.pdf
+```
+
+```python Python
+import requests
+
+# Basic PDF export
+resp = requests.get(
+    "http://localhost:9867/tabs/tab_abc123/pdf"
+)
+
+with open("output.pdf", "wb") as f:
+    f.write(resp.content)
+
+# With options (POST)
+resp = requests.post(
+    "http://localhost:9867/tabs/tab_abc123/pdf",
+    json={
+        "landscape": True,
+        "marginTop": 0.5,
+        "marginBottom": 0.5
+    }
+)
+
+with open("output.pdf", "wb") as f:
+    f.write(resp.content)
+```
+
+```javascript JavaScript
+// Get PDF binary
+const resp = await fetch(
+  "http://localhost:9867/tabs/tab_abc123/pdf?landscape=true"
+);
+const pdfBlob = await resp.blob();
+
+// Download
+const url = URL.createObjectURL(pdfBlob);
+const a = document.createElement('a');
+a.href = url;
+a.download = 'output.pdf';
+a.click();
+```
+</CodeGroup>
+
+### Query Parameters (GET)
+
+<ParamField query="landscape" type="boolean" default="false">
+  Landscape orientation
+</ParamField>
+
+<ParamField query="scale" type="number" default="1.0">
+  Print scaling factor (0.1-2.0)
+</ParamField>
+
+<ParamField query="paperWidth" type="number" default="8.5">
+  Paper width in inches
+</ParamField>
+
+<ParamField query="paperHeight" type="number" default="11">
+  Paper height in inches
+</ParamField>
+
+<ParamField query="marginTop" type="number" default="0">
+  Top margin in inches
+</ParamField>
+
+<ParamField query="marginBottom" type="number" default="0">
+  Bottom margin in inches
+</ParamField>
+
+<ParamField query="marginLeft" type="number" default="0">
+  Left margin in inches
+</ParamField>
+
+<ParamField query="marginRight" type="number" default="0">
+  Right margin in inches
+</ParamField>
+
+<ParamField query="pageRanges" type="string">
+  Page ranges to print (e.g., "1-3,5,8-10")
+</ParamField>
+
+<ParamField query="displayHeaderFooter" type="boolean" default="false">
+  Show header and footer
+</ParamField>
+
+<ParamField query="headerTemplate" type="string">
+  HTML template for header
+</ParamField>
+
+<ParamField query="footerTemplate" type="string">
+  HTML template for footer
+</ParamField>
+
+<ParamField query="generateTaggedPDF" type="boolean" default="false">
+  Generate accessible/tagged PDF
+</ParamField>
+
+<ParamField query="generateDocumentOutline" type="boolean" default="false">
+  Generate document outline (bookmarks)
+</ParamField>
+
+<ParamField query="output" type="string">
+  Set to `json` for base64-encoded PDF or `file` to save to disk
+</ParamField>
+
+### Request Body (POST)
+
+Same parameters as query params, but sent as JSON:
+
+```json
+{
+  "landscape": true,
+  "paperWidth": 11,
+  "paperHeight": 8.5,
+  "marginTop": 0.5,
+  "marginBottom": 0.5,
+  "marginLeft": 0.5,
+  "marginRight": 0.5,
+  "scale": 0.9,
+  "displayHeaderFooter": true,
+  "headerTemplate": "<div style='font-size:10px;text-align:center;width:100%'>Page <span class='pageNumber'></span></div>",
+  "footerTemplate": "<div style='font-size:10px;text-align:center;width:100%'><span class='url'></span></div>"
+}
+```
+
+### Response
+
+Returns PDF binary data with `Content-Type: application/pdf` header.
+
+---
+
+## Paper Sizes
+
+Common paper sizes in inches:
+
+| Size | Width × Height | Use Case |
+|------|----------------|----------|
+| **Letter** | 8.5 × 11 | US standard |
+| **Legal** | 8.5 × 14 | US legal documents |
+| **A4** | 8.27 × 11.69 | International standard |
+| **A3** | 11.69 × 16.54 | Large format |
+| **Tabloid** | 11 × 17 | Posters, large prints |
+
+### Examples
+
+```bash
+# Letter (default)
+curl "http://localhost:9867/tabs/tab_abc123/pdf" > letter.pdf
+
+# A4
+curl "http://localhost:9867/tabs/tab_abc123/pdf?paperWidth=8.27&paperHeight=11.69" > a4.pdf
+
+# Legal
+curl "http://localhost:9867/tabs/tab_abc123/pdf?paperWidth=8.5&paperHeight=14" > legal.pdf
+```
+
+---
+
+## Headers and Footers
+
+Add custom headers and footers with HTML templates:
+
+```python
+import requests
+
+resp = requests.post(
+    "http://localhost:9867/tabs/tab_abc123/pdf",
+    json={
+        "displayHeaderFooter": True,
+        "marginTop": 1,
+        "marginBottom": 1,
+        "headerTemplate": """
+            <div style='font-size:10px; text-align:center; width:100%;'>
+                <span class='title'></span> - Page <span class='pageNumber'></span> of <span class='totalPages'></span>
+            </div>
+        """,
+        "footerTemplate": """
+            <div style='font-size:9px; text-align:center; width:100%;'>
+                <span class='url'></span> | Generated on <span class='date'></span>
+            </div>
+        """
+    }
+)
+
+with open("output.pdf", "wb") as f:
+    f.write(resp.content)
+```
+
+### Template Variables
+
+| Variable | Description |
+|----------|-------------|
+| `<span class='title'></span>` | Document title |
+| `<span class='url'></span>` | Page URL |
+| `<span class='date'></span>` | Print date |
+| `<span class='pageNumber'></span>` | Current page number |
+| `<span class='totalPages'></span>` | Total pages |
+
+---
+
+## Page Ranges
+
+Export specific pages only:
+
+```bash
+# Pages 1-3
+curl "http://localhost:9867/tabs/tab_abc123/pdf?pageRanges=1-3" > pages-1-3.pdf
+
+# Pages 1, 3, and 5-7
+curl "http://localhost:9867/tabs/tab_abc123/pdf?pageRanges=1,3,5-7" > selected-pages.pdf
+
+# First page only
+curl "http://localhost:9867/tabs/tab_abc123/pdf?pageRanges=1" > first-page.pdf
+```
+
+---
+
+## Base64 Output
+
+Get PDF as base64-encoded JSON:
+
+```bash
+curl "http://localhost:9867/tabs/tab_abc123/pdf?output=json" | jq .
+```
+
+Response:
+```json
+{
+  "format": "pdf",
+  "base64": "JVBERi0xLjQKJeLjz9MKMyAwIG9iago8PC9UeXBlL..."
+}
+```
+
+Decode in Python:
+```python
+import base64
+
+resp = requests.get(
+    "http://localhost:9867/tabs/tab_abc123/pdf?output=json"
+)
+pdf_data = base64.b64decode(resp.json()["base64"])
+
+with open("output.pdf", "wb") as f:
+    f.write(pdf_data)
+```
+
+---
+
+## Save to File
+
+Save PDF directly to disk:
+
+```bash
+curl "http://localhost:9867/tabs/tab_abc123/pdf?output=file"
+```
+
+Response:
+```json
+{
+  "path": "/path/to/pdfs/output-20260303-123456.pdf",
+  "size": 125678,
+  "format": "pdf",
+  "timestamp": "20260303-123456"
+}
+```
+
+---
+
+## Complete Example
+
+```python
+import requests
+import time
+
+BASE = "http://localhost:9867"
+
+# Start instance
+inst = requests.post(f"{BASE}/instances/start",
+    json={"mode": "headed"}).json()
+
+# Open tab
+tab = requests.post(f"{BASE}/instances/{inst['id']}/tabs/open",
+    json={"url": "https://example.com"}).json()
+
+tab_id = tab["tabId"]
+
+# Wait for page load
+time.sleep(2)
+
+# Export to PDF with custom options
+resp = requests.post(f"{BASE}/tabs/{tab_id}/pdf", json={
+    "landscape": False,
+    "paperWidth": 8.5,
+    "paperHeight": 11,
+    "marginTop": 0.5,
+    "marginBottom": 0.5,
+    "marginLeft": 0.5,
+    "marginRight": 0.5,
+    "scale": 1.0,
+    "displayHeaderFooter": True,
+    "headerTemplate": "<div style='font-size:10px;text-align:center;width:100%;'>Example Domain</div>",
+    "footerTemplate": "<div style='font-size:10px;text-align:center;width:100%;'>Page <span class='pageNumber'></span></div>",
+    "generateTaggedPDF": True,
+    "generateDocumentOutline": True
+})
+
+# Save PDF
+with open("example.pdf", "wb") as f:
+    f.write(resp.content)
+
+print(f"PDF saved: {len(resp.content)} bytes")
+
+# Cleanup
+requests.post(f"{BASE}/instances/{inst['id']}/stop")
+```
+
+---
+
+## Batch Export Example
+
+```bash
+#!/bin/bash
+
+BASE="http://localhost:9867"
+TAB="tab_abc123"
+
+URLS=(
+  "https://example.com"
+  "https://google.com"
+  "https://github.com"
+)
+
+for url in "${URLS[@]}"; do
+  # Navigate
+  curl -s -X POST "$BASE/tabs/$TAB/navigate" \
+    -d "{\"url\":\"$url\",\"waitFor\":\"networkidle\"}"
+  
+  sleep 3
+  
+  # Export to PDF
+  NAME=$(echo $url | sed 's/https:\/\///' | sed 's/\//_/g')
+  curl -s "$BASE/tabs/$TAB/pdf?landscape=true&marginTop=0.5" \
+    > "${NAME}.pdf"
+  
+  echo "Saved ${NAME}.pdf"
+done
+```
+
+---
+
+## Error Handling
+
+### Tab Not Found (404)
+
+```bash
+curl "http://localhost:9867/tabs/nonexistent/pdf"
+```
+
+**Response:**
+```json
+{
+  "error": "tab not found",
+  "statusCode": 404
+}
+```
+
+### Invalid Parameters (400)
+
+```bash
+curl "http://localhost:9867/tabs/tab_abc123/pdf?scale=5.0"
+```
+
+**Response:**
+```json
+{
+  "error": "scale must be between 0.1 and 2.0",
+  "statusCode": 400
+}
+```
+
+---
+
+## Best Practices
+
+### Wait for Page Load
+
+```python
+# Navigate with wait
+requests.post(f"{BASE}/tabs/{tab_id}/navigate",
+    json={"url": "https://example.com", "waitFor": "networkidle"})
+
+# Then export
+resp = requests.get(f"{BASE}/tabs/{tab_id}/pdf")
+```
+
+### Use Margins for Readability
+
+```json
+{
+  "marginTop": 0.5,
+  "marginBottom": 0.5,
+  "marginLeft": 0.75,
+  "marginRight": 0.75
+}
+```
+
+### Enable Accessibility
+
+```json
+{
+  "generateTaggedPDF": true,
+  "generateDocumentOutline": true
+}
+```
+
+### Adjust Scale for Fit
+
+```python
+# If content is cut off, reduce scale
+resp = requests.post(f"{BASE}/tabs/{tab_id}/pdf",
+    json={"scale": 0.8})
+```
+
+---
+
+## Next Steps
+
+<CardGroup cols={2}>
+  <Card title="Screenshots" icon="image" href="/api/screenshots">
+    Capture visual snapshots
+  </Card>
+  <Card title="Screencast" icon="video" href="/api/screencast">
+    Stream live tab content
+  </Card>
+  <Card title="Navigation" icon="compass" href="/api/navigation">
+    Navigate pages before export
+  </Card>
+  <Card title="Snapshot" icon="camera" href="/api/snapshot">
+    Get structured page data
+  </Card>
+</CardGroup>

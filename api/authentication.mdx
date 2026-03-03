@@ -1,0 +1,342 @@
+---
+title: 'Authentication'
+description: 'API authentication and authorization for PinchTab'
+---
+
+## Overview
+
+PinchTab supports optional **Bearer token authentication**. When enabled, all API requests must include a valid authentication token.
+
+<Note>
+Authentication is **disabled by default**. Enable it by setting the `BRIDGE_TOKEN` environment variable when starting the server.
+</Note>
+
+## Enabling Authentication
+
+Set the `BRIDGE_TOKEN` environment variable:
+
+```bash
+export BRIDGE_TOKEN="your_secret_token_here"
+pinchtab
+```
+
+Or inline:
+
+```bash
+BRIDGE_TOKEN="your_secret_token_here" pinchtab
+```
+
+<Warning>
+Use a strong, randomly generated token in production environments.
+</Warning>
+
+## Making Authenticated Requests
+
+Include the token in the `Authorization` header with the `Bearer` prefix:
+
+<CodeGroup>
+```bash cURL
+curl -H "Authorization: Bearer your_secret_token_here" \
+  http://localhost:9867/instances
+```
+
+```python Python
+import requests
+
+headers = {"Authorization": "Bearer your_secret_token_here"}
+resp = requests.get("http://localhost:9867/instances", headers=headers)
+print(resp.json())
+```
+
+```javascript JavaScript
+const headers = {
+  "Authorization": "Bearer your_secret_token_here"
+};
+
+const resp = await fetch("http://localhost:9867/instances", { headers });
+const instances = await resp.json();
+console.log(instances);
+```
+
+```go Go
+package main
+
+import (
+    "io"
+    "net/http"
+)
+
+func main() {
+    req, _ := http.NewRequest("GET", "http://localhost:9867/instances", nil)
+    req.Header.Set("Authorization", "Bearer your_secret_token_here")
+    
+    client := &http.Client{}
+    resp, _ := client.Do(req)
+    defer resp.Body.Close()
+    
+    body, _ := io.ReadAll(resp.Body)
+}
+```
+</CodeGroup>
+
+## Authentication Errors
+
+### Missing Token (401 Unauthorized)
+
+**Request:**
+```bash
+curl http://localhost:9867/instances
+```
+
+**Response:**
+```json
+{
+  "error": "authentication required",
+  "statusCode": 401
+}
+```
+
+### Invalid Token (401 Unauthorized)
+
+**Request:**
+```bash
+curl -H "Authorization: Bearer wrong_token" \
+  http://localhost:9867/instances
+```
+
+**Response:**
+```json
+{
+  "error": "invalid authentication token",
+  "statusCode": 401
+}
+```
+
+## Security Best Practices
+
+### Token Generation
+
+Generate a strong random token:
+
+```bash
+# Linux/macOS
+openssl rand -hex 32
+
+# Or use a password manager to generate a strong token
+```
+
+### Environment Variables
+
+Store tokens in environment variables, not in code:
+
+```bash
+# .env file (do not commit to version control)
+BRIDGE_TOKEN=abc123def456...
+
+# Load in your shell
+export $(cat .env | xargs)
+pinchtab
+```
+
+### HTTPS in Production
+
+<Warning>
+Always use HTTPS in production to prevent token interception. Place PinchTab behind a reverse proxy (nginx, Caddy) with TLS.
+</Warning>
+
+Example nginx configuration:
+
+```nginx
+server {
+    listen 443 ssl http2;
+    server_name api.example.com;
+
+    ssl_certificate /path/to/cert.pem;
+    ssl_certificate_key /path/to/key.pem;
+
+    location / {
+        proxy_pass http://localhost:9867;
+        proxy_set_header Host $host;
+        proxy_set_header X-Real-IP $remote_addr;
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto $scheme;
+    }
+}
+```
+
+### Token Rotation
+
+Rotate tokens periodically:
+
+1. Generate a new token
+2. Update the `BRIDGE_TOKEN` environment variable
+3. Restart PinchTab
+4. Update all clients with the new token
+
+### Access Control
+
+For multi-user scenarios:
+
+- **Single Token**: All users share one token (simple but less secure)
+- **Reverse Proxy Auth**: Use nginx/Caddy for per-user authentication
+- **API Gateway**: Use an API gateway (Kong, Tyk) for advanced auth
+
+## Tab Locking (Multi-Agent Coordination)
+
+For multi-agent scenarios, use **tab locking** to prevent concurrent access:
+
+### Lock a Tab
+
+<ParamField path="owner" type="string" required>
+  Unique identifier for the agent/user locking the tab
+</ParamField>
+
+<ParamField path="ttl" type="integer">
+  Time-to-live in seconds (default: 60)
+</ParamField>
+
+```bash
+curl -X POST http://localhost:9867/tabs/tab_abc12345/lock \
+  -H "Authorization: Bearer your_token" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "owner": "agent-1",
+    "ttl": 120
+  }'
+```
+
+**Response:**
+```json
+{
+  "locked": true,
+  "owner": "agent-1",
+  "expiresAt": "2026-03-03T12:34:56Z"
+}
+```
+
+### Unlock a Tab
+
+```bash
+curl -X POST http://localhost:9867/tabs/tab_abc12345/unlock \
+  -H "Authorization: Bearer your_token" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "owner": "agent-1"
+  }'
+```
+
+**Response:**
+```json
+{
+  "unlocked": true
+}
+```
+
+### Owner Header
+
+Include the owner in the `X-Owner` header for automatic enforcement:
+
+```bash
+curl -X POST http://localhost:9867/tabs/tab_abc12345/action \
+  -H "Authorization: Bearer your_token" \
+  -H "X-Owner: agent-1" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "kind": "click",
+    "ref": "e5"
+  }'
+```
+
+If the tab is locked by a different owner:
+
+```json
+{
+  "error": "tab tab_abc12345 is locked by agent-2",
+  "code": "tab_locked",
+  "statusCode": 423
+}
+```
+
+## Example: Multi-Agent Setup
+
+```python
+import requests
+import time
+
+BASE = "http://localhost:9867"
+TOKEN = "your_secret_token"
+AGENT_ID = "agent-1"
+
+headers = {
+    "Authorization": f"Bearer {TOKEN}",
+    "X-Owner": AGENT_ID,
+    "Content-Type": "application/json"
+}
+
+# Start instance
+inst = requests.post(f"{BASE}/instances/start", 
+    headers=headers, json={"mode": "headed"}).json()
+
+# Open tab
+tab = requests.post(f"{BASE}/instances/{inst['id']}/tabs/open",
+    headers=headers, json={"url": "https://example.com"}).json()
+
+tab_id = tab["tabId"]
+
+# Lock tab
+requests.post(f"{BASE}/tabs/{tab_id}/lock",
+    headers=headers, json={"owner": AGENT_ID, "ttl": 300})
+
+try:
+    # Do work (tab is locked to this agent)
+    requests.post(f"{BASE}/tabs/{tab_id}/action",
+        headers=headers, json={"kind": "click", "ref": "e5"})
+    
+    time.sleep(2)
+    
+    # Get snapshot
+    snapshot = requests.get(f"{BASE}/tabs/{tab_id}/snapshot?filter=interactive",
+        headers=headers).json()
+    
+finally:
+    # Always unlock when done
+    requests.post(f"{BASE}/tabs/{tab_id}/unlock",
+        headers=headers, json={"owner": AGENT_ID})
+```
+
+## No Authentication Mode
+
+When `BRIDGE_TOKEN` is not set, all endpoints are accessible without authentication:
+
+```bash
+# No token required
+curl http://localhost:9867/instances
+curl http://localhost:9867/tabs
+```
+
+<Note>
+Use no-auth mode only for local development or trusted network environments.
+</Note>
+
+## Summary
+
+<CardGroup cols={2}>
+  <Card title="Enable Auth" icon="toggle-on">
+    Set `BRIDGE_TOKEN` environment variable
+  </Card>
+  <Card title="Use Bearer Tokens" icon="key">
+    Include `Authorization: Bearer <token>` header
+  </Card>
+  <Card title="Tab Locking" icon="lock">
+    Use `X-Owner` header for multi-agent safety
+  </Card>
+  <Card title="HTTPS in Production" icon="shield">
+    Always use TLS with reverse proxy
+  </Card>
+</CardGroup>
+
+## Next Steps
+
+- [Instances API](/api/instances) - Create and manage browser instances
+- [Tabs API](/api/tabs) - List and control tabs
+- [Actions API](/api/actions) - Automate browser interactions

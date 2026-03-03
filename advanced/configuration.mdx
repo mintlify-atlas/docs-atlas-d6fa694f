@@ -1,0 +1,505 @@
+---
+title: Configuration
+description: Complete environment variable reference and configuration options
+icon: sliders
+---
+
+PinchTab can be configured using environment variables or a JSON configuration file. Environment variables take precedence over file-based configuration.
+
+## Configuration File
+
+PinchTab looks for a configuration file at `~/.pinchtab/config.json` by default. You can specify a custom path using the `BRIDGE_CONFIG` environment variable.
+
+### Initialize Config File
+
+<Steps>
+  <Step title="Create default config">
+    ```bash
+    pinchtab config init
+    ```
+    
+    This creates `~/.pinchtab/config.json` with default values.
+  </Step>
+  
+  <Step title="View current configuration">
+    ```bash
+    pinchtab config show
+    ```
+    
+    Shows the current configuration including all environment variable overrides.
+  </Step>
+</Steps>
+
+### Config File Format
+
+```json ~/.pinchtab/config.json
+{
+  "port": "9867",
+  "instancePortStart": 9868,
+  "instancePortEnd": 9968,
+  "token": "your-secret-token",
+  "stateDir": "/home/user/.pinchtab",
+  "profileDir": "/home/user/.pinchtab/chrome-profile",
+  "headless": true,
+  "noRestore": false,
+  "maxTabs": 20,
+  "timeoutSec": 15,
+  "navigateSec": 30
+}
+```
+
+<Note>
+Environment variables take precedence over config file values. The config file is only used when the corresponding environment variable is not set.
+</Note>
+
+## Environment Variables
+
+### Server Configuration
+
+<Accordion title="BRIDGE_BIND">
+**Type:** String  
+**Default:** `127.0.0.1`  
+**Description:** IP address to bind the HTTP server to.
+
+```bash
+# Listen on localhost only (default, most secure)
+export BRIDGE_BIND=127.0.0.1
+
+# Listen on all interfaces (use with caution)
+export BRIDGE_BIND=0.0.0.0
+```
+
+<Warning>
+Binding to `0.0.0.0` exposes PinchTab to your network. Always use authentication with `BRIDGE_TOKEN` when doing this.
+</Warning>
+</Accordion>
+
+<Accordion title="BRIDGE_PORT">
+**Type:** String  
+**Default:** `9867`  
+**Description:** Port for the main HTTP API server.
+
+```bash
+export BRIDGE_PORT=9867
+pinchtab
+# Server listens on http://localhost:9867
+```
+</Accordion>
+
+<Accordion title="INSTANCE_PORT_START">
+**Type:** Integer  
+**Default:** `9868`  
+**Description:** Starting port for instance allocation.
+
+```bash
+export INSTANCE_PORT_START=10000
+export INSTANCE_PORT_END=10100
+pinchtab
+# Instances will use ports 10000-10100
+```
+</Accordion>
+
+<Accordion title="INSTANCE_PORT_END">
+**Type:** Integer  
+**Default:** `9968`  
+**Description:** Ending port for instance allocation. PinchTab can create up to 100 instances by default (9868-9968).
+
+```bash
+export INSTANCE_PORT_END=9900
+# Reduces available instances to 32 (9868-9900)
+```
+</Accordion>
+
+<Accordion title="BRIDGE_TOKEN">
+**Type:** String  
+**Default:** *(none)*  
+**Description:** Authentication token for HTTP API access. When set, all requests must include `Authorization: Bearer <token>` header.
+
+```bash
+export BRIDGE_TOKEN=my-secret-token
+pinchtab
+```
+
+Then make requests with:
+```bash
+curl -H "Authorization: Bearer my-secret-token" \
+  http://localhost:9867/instances
+```
+
+<Warning>
+Always use `BRIDGE_TOKEN` when exposing PinchTab to a network or running in production environments.
+</Warning>
+</Accordion>
+
+### Chrome Configuration
+
+<Accordion title="CDP_URL">
+**Type:** String (WebSocket URL)  
+**Default:** *(none)*  
+**Description:** Connect to an existing Chrome instance instead of launching a new one.
+
+```bash
+export CDP_URL=ws://localhost:9222/devtools/browser/b041f900-...
+pinchtab
+```
+
+See [CDP Integration](/advanced/cdp-integration) for details.
+</Accordion>
+
+<Accordion title="BRIDGE_HEADLESS">
+**Type:** Boolean  
+**Default:** `true`  
+**Accepts:** `true`, `false`, `1`, `0`, `yes`, `no`, `on`, `off`
+
+```bash
+# Run headless (no visible window)
+export BRIDGE_HEADLESS=true
+
+# Run headed (visible Chrome window)
+export BRIDGE_HEADLESS=false
+```
+</Accordion>
+
+<Accordion title="CHROME_BIN / CHROME_BINARY">
+**Type:** String (file path)  
+**Default:** Auto-detected  
+**Description:** Path to Chrome/Chromium binary. PinchTab auto-detects Chrome on most systems, but you can override it.
+
+<CodeGroup>
+```bash macOS
+export CHROME_BIN=/Applications/Google\ Chrome.app/Contents/MacOS/Google\ Chrome
+```
+
+```bash Linux
+export CHROME_BIN=/usr/bin/google-chrome
+```
+
+```bash Custom Build
+export CHROME_BIN=/opt/chromium/chrome
+```
+</CodeGroup>
+</Accordion>
+
+<Accordion title="CHROME_FLAGS">
+**Type:** String  
+**Default:** *(none)*  
+**Description:** Additional Chrome command-line flags to pass at startup.
+
+```bash
+# Disable GPU acceleration
+export CHROME_FLAGS="--disable-gpu"
+
+# Multiple flags (space-separated)
+export CHROME_FLAGS="--disable-gpu --disable-dev-shm-usage --no-sandbox"
+```
+
+<Note>
+Common flags for containerized environments:
+- `--no-sandbox` (required in some Docker setups)
+- `--disable-dev-shm-usage` (fixes shared memory issues)
+- `--disable-gpu` (when no GPU available)
+</Note>
+</Accordion>
+
+<Accordion title="BRIDGE_CHROME_VERSION">
+**Type:** String  
+**Default:** `144.0.7559.133`  
+**Description:** Chrome version to report in User-Agent string.
+
+```bash
+export BRIDGE_CHROME_VERSION=131.0.6778.108
+```
+</Accordion>
+
+### Profile & State
+
+<Accordion title="BRIDGE_PROFILE">
+**Type:** String (directory path)  
+**Default:** `~/.pinchtab/chrome-profile`  
+**Description:** Directory where Chrome stores browser profile data (cookies, localStorage, history).
+
+```bash
+export BRIDGE_PROFILE=/tmp/chrome-profile-temp
+pinchtab
+```
+
+<Note>
+Each profile is isolated. Use different profile directories to simulate different users or sessions.
+</Note>
+</Accordion>
+
+<Accordion title="BRIDGE_STATE_DIR">
+**Type:** String (directory path)  
+**Default:** `~/.pinchtab`  
+**Description:** Directory where PinchTab stores state data (tab metadata, instance info).
+
+```bash
+export BRIDGE_STATE_DIR=/var/lib/pinchtab
+```
+</Accordion>
+
+<Accordion title="BRIDGE_NO_RESTORE">
+**Type:** Boolean  
+**Default:** `false`  
+**Description:** Skip restoring tabs from previous session on startup.
+
+```bash
+# Always start fresh (don't restore previous tabs)
+export BRIDGE_NO_RESTORE=true
+```
+</Accordion>
+
+### Browser Behavior
+
+<Accordion title="BRIDGE_MAX_TABS">
+**Type:** Integer  
+**Default:** `20`  
+**Description:** Maximum number of tabs allowed per instance.
+
+```bash
+export BRIDGE_MAX_TABS=50
+```
+
+<Warning>
+Too many tabs can cause high memory usage and slower performance.
+</Warning>
+</Accordion>
+
+<Accordion title="BRIDGE_TIMEZONE">
+**Type:** String  
+**Default:** System timezone  
+**Description:** Override timezone for the browser.
+
+```bash
+export BRIDGE_TIMEZONE=America/New_York
+```
+</Accordion>
+
+<Accordion title="BRIDGE_USER_AGENT">
+**Type:** String  
+**Default:** Auto-generated  
+**Description:** Custom User-Agent string to use for all requests.
+
+```bash
+export BRIDGE_USER_AGENT="Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36"
+```
+</Accordion>
+
+<Accordion title="BRIDGE_NO_ANIMATIONS">
+**Type:** Boolean  
+**Default:** `false`  
+**Description:** Disable CSS animations and transitions for faster page loads.
+
+```bash
+export BRIDGE_NO_ANIMATIONS=true
+```
+</Accordion>
+
+### Content Blocking
+
+<Accordion title="BRIDGE_BLOCK_IMAGES">
+**Type:** Boolean  
+**Default:** `false`  
+**Description:** Block image loading to save bandwidth and speed up page loads.
+
+```bash
+export BRIDGE_BLOCK_IMAGES=true
+```
+</Accordion>
+
+<Accordion title="BRIDGE_BLOCK_MEDIA">
+**Type:** Boolean  
+**Default:** `false`  
+**Description:** Block video and audio loading.
+
+```bash
+export BRIDGE_BLOCK_MEDIA=true
+```
+</Accordion>
+
+<Accordion title="BRIDGE_BLOCK_ADS">
+**Type:** Boolean  
+**Default:** `false`  
+**Description:** Enable basic ad blocking.
+
+```bash
+export BRIDGE_BLOCK_ADS=true
+```
+</Accordion>
+
+### Stealth & Detection
+
+<Accordion title="BRIDGE_STEALTH">
+**Type:** String  
+**Default:** `light`  
+**Accepts:** `off`, `light`, `medium`, `aggressive`  
+**Description:** Stealth level for evading bot detection.
+
+```bash
+# No stealth (fastest, most detectable)
+export BRIDGE_STEALTH=off
+
+# Light stealth (recommended for most use cases)
+export BRIDGE_STEALTH=light
+
+# Aggressive stealth (slower, harder to detect)
+export BRIDGE_STEALTH=aggressive
+```
+
+**Stealth Levels:**
+- `off`: No modifications
+- `light`: Basic fingerprint randomization
+- `medium`: Additional evasion techniques
+- `aggressive`: Maximum evasion (may break some sites)
+</Accordion>
+
+### Timeouts
+
+<Accordion title="BRIDGE_TIMEOUT">
+**Type:** Integer (seconds)  
+**Default:** `30`  
+**Description:** Default timeout for browser actions (click, type, etc.).
+
+```bash
+export BRIDGE_TIMEOUT=60
+```
+
+Can also be set in config file as `timeoutSec`.
+</Accordion>
+
+<Accordion title="BRIDGE_NAV_TIMEOUT">
+**Type:** Integer (seconds)  
+**Default:** `60`  
+**Description:** Timeout for page navigation operations.
+
+```bash
+export BRIDGE_NAV_TIMEOUT=120
+```
+
+Can also be set in config file as `navigateSec`.
+</Accordion>
+
+## Configuration Priority
+
+Configuration is loaded in this order (later sources override earlier ones):
+
+1. Default values (hardcoded in PinchTab)
+2. Config file (`~/.pinchtab/config.json` or `$BRIDGE_CONFIG`)
+3. Environment variables
+
+```bash
+# Example: BRIDGE_PORT from env overrides config file
+echo '{"port": "8080"}' > ~/.pinchtab/config.json
+export BRIDGE_PORT=9999
+pinchtab
+# Server listens on 9999, not 8080
+```
+
+## Example Configurations
+
+### Production Setup
+
+```bash Production with Auth
+export BRIDGE_BIND=0.0.0.0
+export BRIDGE_PORT=9867
+export BRIDGE_TOKEN=my-secure-token-here
+export BRIDGE_HEADLESS=true
+export BRIDGE_MAX_TABS=10
+export BRIDGE_STEALTH=light
+pinchtab
+```
+
+### Development Setup
+
+```bash Development (Headed)
+export BRIDGE_HEADLESS=false
+export BRIDGE_NO_RESTORE=true
+pinchtab
+```
+
+### Containerized Setup
+
+```bash Docker/Kubernetes
+export BRIDGE_BIND=0.0.0.0
+export CHROME_FLAGS="--no-sandbox --disable-dev-shm-usage --disable-gpu"
+export BRIDGE_STATE_DIR=/var/lib/pinchtab
+export BRIDGE_PROFILE=/var/lib/pinchtab/chrome-profile
+pinchtab
+```
+
+### Memory-Constrained Environment
+
+```bash Low Memory
+export BRIDGE_MAX_TABS=5
+export BRIDGE_BLOCK_IMAGES=true
+export BRIDGE_BLOCK_MEDIA=true
+export BRIDGE_NO_ANIMATIONS=true
+pinchtab
+```
+
+### Multi-Instance Coordinator
+
+```bash Coordinator Mode
+export BRIDGE_PORT=9867
+export INSTANCE_PORT_START=9868
+export INSTANCE_PORT_END=9968
+export BRIDGE_TOKEN=coordinator-secret
+pinchtab
+```
+
+## CLI Reference
+
+```bash
+# View current config
+pinchtab config show
+
+# Initialize config file
+pinchtab config init
+
+# Custom config file location
+export BRIDGE_CONFIG=/etc/pinchtab/config.json
+pinchtab config show
+```
+
+## Troubleshooting
+
+<Accordion title="Config file not loading">
+Check that the file exists and is valid JSON:
+
+```bash
+cat ~/.pinchtab/config.json | jq .
+```
+
+If invalid, reinitialize:
+```bash
+pinchtab config init
+```
+</Accordion>
+
+<Accordion title="Environment variables not working">
+Verify the variable is set:
+
+```bash
+echo $BRIDGE_PORT
+```
+
+Make sure to export it:
+```bash
+export BRIDGE_PORT=9999  # ✅ Correct
+BRIDGE_PORT=9999         # ❌ Won't work without export
+```
+</Accordion>
+
+<Accordion title="Token authentication not working">
+Ensure you're including the Authorization header:
+
+```bash
+curl -H "Authorization: Bearer your-token" \
+  http://localhost:9867/instances
+```
+
+Not:
+```bash
+curl http://localhost:9867/instances  # ❌ Will fail with 401
+```
+</Accordion>

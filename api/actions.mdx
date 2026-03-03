@@ -1,0 +1,529 @@
+---
+title: 'Actions API'
+description: 'Automate user interactions: click, type, fill, press, hover, scroll'
+---
+
+## Overview
+
+The Actions API enables browser automation by simulating user interactions:
+
+- Click elements
+- Type text
+- Fill inputs
+- Press keys
+- Hover elements
+- Scroll pages
+- Select dropdowns
+- Focus elements
+
+## Single Action
+
+Execute one action on a tab.
+
+```http
+POST /tabs/{id}/action
+```
+
+<CodeGroup>
+```bash Click
+curl -X POST http://localhost:9867/tabs/tab_abc123/action \
+  -H "Content-Type: application/json" \
+  -d '{"kind": "click", "ref": "e5"}'
+```
+
+```bash Type
+curl -X POST http://localhost:9867/tabs/tab_abc123/action \
+  -H "Content-Type: application/json" \
+  -d '{
+    "kind": "type",
+    "ref": "e1",
+    "text": "user@example.com"
+  }'
+```
+
+```python Python
+import requests
+
+# Click element
+resp = requests.post(
+    "http://localhost:9867/tabs/tab_abc123/action",
+    json={"kind": "click", "ref": "e5"}
+)
+print(resp.json())  # {"success": true}
+```
+
+```javascript JavaScript
+// Type text
+const resp = await fetch(
+  "http://localhost:9867/tabs/tab_abc123/action",
+  {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({
+      kind: "type",
+      ref: "e1",
+      text: "user@example.com"
+    })
+  }
+);
+const result = await resp.json();
+```
+</CodeGroup>
+
+### Request Body
+
+<ParamField path="kind" type="string" required>
+  Action type: `click`, `type`, `fill`, `press`, `hover`, `focus`, `scroll`, `select`
+</ParamField>
+
+<ParamField path="ref" type="string">
+  Element reference from snapshot (e.g., `e5`, `e12`)
+</ParamField>
+
+<ParamField path="selector" type="string">
+  CSS selector (alternative to `ref`)
+</ParamField>
+
+<ParamField path="text" type="string">
+  Text to type (for `type` and `fill` actions)
+</ParamField>
+
+<ParamField path="value" type="string">
+  Value for `select` dropdowns
+</ParamField>
+
+<ParamField path="key" type="string">
+  Key name for `press` action (e.g., `Enter`, `Tab`)
+</ParamField>
+
+<ParamField path="pixels" type="integer">
+  Scroll amount in pixels (for `scroll` action)
+</ParamField>
+
+### Response (200 OK)
+
+```json
+{
+  "success": true,
+  "result": {}
+}
+```
+
+---
+
+## Action Types
+
+### click
+
+Click an element (button, link, checkbox, etc.).
+
+```json
+{
+  "kind": "click",
+  "ref": "e5"
+}
+```
+
+### type
+
+Type text into an input field (simulates keyboard events).
+
+```json
+{
+  "kind": "type",
+  "ref": "e1",
+  "text": "user@example.com"
+}
+```
+
+<Note>
+`type` simulates actual keystrokes. Use `fill` for instant value setting.
+</Note>
+
+### fill
+
+Set input value directly without triggering keyboard events (faster).
+
+```json
+{
+  "kind": "fill",
+  "ref": "e1",
+  "text": "instant value"
+}
+```
+
+### press
+
+Press a keyboard key.
+
+```json
+{
+  "kind": "press",
+  "key": "Enter"
+}
+```
+
+**Supported keys:** `Enter`, `Tab`, `Escape`, `Backspace`, `Delete`, `ArrowUp`, `ArrowDown`, `ArrowLeft`, `ArrowRight`, `Space`, `Home`, `End`, `PageUp`, `PageDown`
+
+### hover
+
+Move mouse over an element (triggers hover effects).
+
+```json
+{
+  "kind": "hover",
+  "ref": "e5"
+}
+```
+
+### focus
+
+Focus an input element.
+
+```json
+{
+  "kind": "focus",
+  "ref": "e5"
+}
+```
+
+### scroll
+
+Scroll to an element or by pixels.
+
+```json
+// Scroll to element
+{
+  "kind": "scroll",
+  "ref": "e5"
+}
+
+// Scroll by pixels
+{
+  "kind": "scroll",
+  "pixels": 500
+}
+```
+
+### select
+
+Select a dropdown option.
+
+```json
+{
+  "kind": "select",
+  "ref": "e7",
+  "value": "Option 2"
+}
+```
+
+---
+
+## Multiple Actions
+
+Execute multiple actions in sequence.
+
+```http
+POST /tabs/{id}/actions
+```
+
+```bash
+curl -X POST http://localhost:9867/tabs/tab_abc123/actions \
+  -H "Content-Type: application/json" \
+  -d '{
+    "actions": [
+      {"kind": "type", "ref": "e1", "text": "user@example.com"},
+      {"kind": "type", "ref": "e2", "text": "password123"},
+      {"kind": "click", "ref": "e3"}
+    ],
+    "stopOnError": true
+  }'
+```
+
+### Request Body
+
+<ParamField path="actions" type="array" required>
+  Array of action objects
+</ParamField>
+
+<ParamField path="stopOnError" type="boolean" default="false">
+  Stop execution on first error
+</ParamField>
+
+### Response (200 OK)
+
+```json
+{
+  "results": [
+    {"index": 0, "success": true, "result": {}},
+    {"index": 1, "success": true, "result": {}},
+    {"index": 2, "success": true, "result": {}}
+  ],
+  "total": 3,
+  "successful": 3,
+  "failed": 0
+}
+```
+
+---
+
+## Element References
+
+Before executing actions, take a snapshot to get element references:
+
+```bash
+# 1. Get snapshot
+curl "http://localhost:9867/tabs/tab_abc123/snapshot?filter=interactive" | jq .
+
+# Response shows elements with refs
+{
+  "nodes": [
+    {"ref": "e0", "role": "heading", "name": "Sign In"},
+    {"ref": "e1", "role": "textbox", "name": "Email"},
+    {"ref": "e2", "role": "textbox", "name": "Password"},
+    {"ref": "e3", "role": "button", "name": "Sign in"}
+  ]
+}
+
+# 2. Use refs in actions
+curl -X POST http://localhost:9867/tabs/tab_abc123/actions \
+  -d '{
+    "actions": [
+      {"kind": "type", "ref": "e1", "text": "user@example.com"},
+      {"kind": "type", "ref": "e2", "text": "password"},
+      {"kind": "click", "ref": "e3"}
+    ]
+  }'
+```
+
+<Warning>
+Element refs (`e0`, `e1`, etc.) are cached from snapshots. Take a new snapshot after page navigation.
+</Warning>
+
+---
+
+## Complete Login Example
+
+```python
+import requests
+import time
+
+BASE = "http://localhost:9867"
+
+# Start instance
+inst = requests.post(f"{BASE}/instances/start",
+    json={"mode": "headed"}).json()
+
+# Open tab
+tab = requests.post(f"{BASE}/instances/{inst['id']}/tabs/open",
+    json={"url": "https://example.com/login"}).json()
+
+tab_id = tab["tabId"]
+
+# Wait for page load
+time.sleep(2)
+
+# Get page structure
+snapshot = requests.get(
+    f"{BASE}/tabs/{tab_id}/snapshot?filter=interactive"
+).json()
+
+print("Interactive elements:")
+for node in snapshot["nodes"]:
+    print(f"  {node['ref']}: {node['role']} - {node['name']}")
+
+# Perform login
+requests.post(f"{BASE}/tabs/{tab_id}/actions", json={
+    "actions": [
+        {"kind": "type", "ref": "e1", "text": "user@example.com"},
+        {"kind": "type", "ref": "e2", "text": "password123"},
+        {"kind": "click", "ref": "e3"}
+    ],
+    "stopOnError": True
+})
+
+# Wait for navigation
+time.sleep(3)
+
+# Verify login
+result = requests.get(f"{BASE}/tabs/{tab_id}").json()
+print(f"Current URL: {result['url']}")
+
+# Cleanup
+requests.post(f"{BASE}/instances/{inst['id']}/stop")
+```
+
+---
+
+## Form Filling Example
+
+```bash
+#!/bin/bash
+
+BASE="http://localhost:9867"
+TAB="tab_abc123"
+
+# Navigate to form
+curl -X POST "$BASE/tabs/$TAB/navigate" \
+  -d '{"url":"https://example.com/form"}'
+
+sleep 2
+
+# Get form elements
+curl -s "$BASE/tabs/$TAB/snapshot?filter=interactive" | jq .
+
+# Fill form
+curl -X POST "$BASE/tabs/$TAB/actions" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "actions": [
+      {"kind": "fill", "ref": "e1", "text": "John Doe"},
+      {"kind": "fill", "ref": "e2", "text": "john@example.com"},
+      {"kind": "select", "ref": "e3", "value": "United States"},
+      {"kind": "click", "ref": "e4"},
+      {"kind": "click", "ref": "e5"}
+    ],
+    "stopOnError": true
+  }'
+```
+
+---
+
+## Error Handling
+
+### Ref Not Found (404)
+
+```bash
+curl -X POST http://localhost:9867/tabs/tab_abc123/action \
+  -d '{"kind":"click","ref":"e999"}'
+```
+
+**Response:**
+```json
+{
+  "error": "ref e999 not found - take a /snapshot first",
+  "statusCode": 404
+}
+```
+
+**Solution:** Take a snapshot before using refs.
+
+### Unknown Action Kind (400)
+
+```bash
+curl -X POST http://localhost:9867/tabs/tab_abc123/action \
+  -d '{"kind":"unknown","ref":"e1"}'
+```
+
+**Response:**
+```json
+{
+  "error": "unknown action kind: unknown - valid values: click, type, fill, press, hover, focus, scroll, select",
+  "statusCode": 400
+}
+```
+
+### Tab Locked (423)
+
+```bash
+curl -X POST http://localhost:9867/tabs/tab_abc123/action \
+  -H "X-Owner: agent-2" \
+  -d '{"kind":"click","ref":"e5"}'
+```
+
+**Response (if locked by agent-1):**
+```json
+{
+  "error": "tab tab_abc123 is locked by agent-1",
+  "code": "tab_locked",
+  "statusCode": 423
+}
+```
+
+---
+
+## Best Practices
+
+### Always Take Snapshots First
+
+```python
+# 1. Navigate
+requests.post(f"{BASE}/tabs/{tab_id}/navigate",
+    json={"url": "https://example.com"})
+
+# 2. Get snapshot (REQUIRED before actions)
+snapshot = requests.get(
+    f"{BASE}/tabs/{tab_id}/snapshot?filter=interactive"
+).json()
+
+# 3. Use refs from snapshot
+requests.post(f"{BASE}/tabs/{tab_id}/action",
+    json={"kind": "click", "ref": "e5"})
+```
+
+### Use fill for Speed, type for Realism
+
+```json
+// Fast (instant value set)
+{"kind": "fill", "ref": "e1", "text": "value"}
+
+// Realistic (simulates typing)
+{"kind": "type", "ref": "e1", "text": "value"}
+```
+
+### Batch Actions for Efficiency
+
+Instead of multiple requests:
+```python
+# ❌ Slow
+requests.post(f"{BASE}/tabs/{tab_id}/action", json={"kind": "type", "ref": "e1", "text": "email"})
+requests.post(f"{BASE}/tabs/{tab_id}/action", json={"kind": "type", "ref": "e2", "text": "pass"})
+requests.post(f"{BASE}/tabs/{tab_id}/action", json={"kind": "click", "ref": "e3"})
+```
+
+Use batch:
+```python
+# ✅ Fast
+requests.post(f"{BASE}/tabs/{tab_id}/actions", json={
+    "actions": [
+        {"kind": "type", "ref": "e1", "text": "email"},
+        {"kind": "type", "ref": "e2", "text": "pass"},
+        {"kind": "click", "ref": "e3"}
+    ]
+})
+```
+
+### Handle Stale References
+
+If an action fails with "node not found", refresh the snapshot:
+
+```python
+try:
+    requests.post(f"{BASE}/tabs/{tab_id}/action",
+        json={"kind": "click", "ref": "e5"})
+except:
+    # Refresh snapshot
+    snapshot = requests.get(
+        f"{BASE}/tabs/{tab_id}/snapshot?filter=interactive"
+    ).json()
+    # Retry action with new ref
+```
+
+---
+
+## Next Steps
+
+<CardGroup cols={2}>
+  <Card title="Snapshot API" icon="camera" href="/api/snapshot">
+    Get element refs for actions
+  </Card>
+  <Card title="Evaluation" icon="code" href="/api/evaluation">
+    Execute custom JavaScript
+  </Card>
+  <Card title="Screenshots" icon="image" href="/api/screenshots">
+    Capture page state
+  </Card>
+  <Card title="Navigation" icon="compass" href="/api/navigation">
+    Navigate to pages
+  </Card>
+</CardGroup>

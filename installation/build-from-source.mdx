@@ -1,0 +1,463 @@
+---
+title: Build from Source
+description: Build PinchTab from source code using Go
+---
+
+Build PinchTab from source for development, custom modifications, or platforms without prebuilt binaries.
+
+## Prerequisites
+
+### System Requirements
+
+| Requirement | Version | Purpose |
+|------------|---------|----------|
+| Go | 1.25+ | Build language |
+| Git | Latest | Version control |
+| Chrome/Chromium | Latest | Browser automation |
+| macOS, Linux, or WSL2 | Current | Supported OS |
+
+### Recommended Setup
+
+- **macOS**: Homebrew for package management
+- **Linux**: apt (Debian/Ubuntu) or yum (RHEL/CentOS)
+- **WSL2**: Full Linux environment (not WSL1)
+
+## Installation Steps
+
+<Steps>
+  <Step title="Install Go">
+    <Tabs>
+      <Tab title="macOS">
+        ```bash
+        brew install go
+        go version  # Verify: go1.25.0 or higher
+        ```
+      </Tab>
+
+      <Tab title="Ubuntu/Debian">
+        ```bash
+        sudo apt update
+        sudo apt install -y golang-go git build-essential
+        go version
+        ```
+      </Tab>
+
+      <Tab title="RHEL/CentOS">
+        ```bash
+        sudo yum install -y golang git
+        go version
+        ```
+      </Tab>
+    </Tabs>
+  </Step>
+
+  <Step title="Install Chrome/Chromium">
+    <Tabs>
+      <Tab title="macOS">
+        ```bash
+        brew install chromium
+        ```
+      </Tab>
+
+      <Tab title="Ubuntu/Debian">
+        ```bash
+        sudo apt install -y chromium-browser
+        ```
+      </Tab>
+
+      <Tab title="RHEL/CentOS">
+        ```bash
+        sudo yum install -y chromium
+        ```
+      </Tab>
+    </Tabs>
+  </Step>
+
+  <Step title="Clone the repository">
+    ```bash
+    git clone https://github.com/pinchtab/pinchtab.git
+    cd pinchtab
+    ```
+  </Step>
+
+  <Step title="Download dependencies">
+    ```bash
+    go mod download
+    go mod verify  # Verify checksums
+    ```
+  </Step>
+
+  <Step title="Build the binary">
+    ```bash
+    go build -o pinchtab ./cmd/pinchtab
+    ```
+
+    This creates the `pinchtab` binary in the current directory.
+  </Step>
+
+  <Step title="Verify the build">
+    ```bash
+    ./pinchtab --version
+    ```
+  </Step>
+</Steps>
+
+## Build Process
+
+### Simple Build
+
+The basic build command:
+
+```bash
+go build -o pinchtab ./cmd/pinchtab
+```
+
+**What it does:**
+- Compiles all Go source code
+- Links dependencies from `go.mod`
+- Produces executable binary: `./pinchtab`
+- Takes approximately 30-60 seconds
+
+### Optimized Build (Smaller Binary)
+
+For production or distribution, build with optimization flags:
+
+```bash
+go build -ldflags="-s -w" -o pinchtab ./cmd/pinchtab
+```
+
+**Flags:**
+- `-s`: Omit symbol table
+- `-w`: Omit DWARF debugging information
+- Result: Smaller binary size (~12MB)
+
+### Cross-Compilation
+
+Build for different platforms:
+
+<CodeGroup>
+```bash macOS (Apple Silicon)
+GOOS=darwin GOARCH=arm64 go build -o pinchtab-darwin-arm64 ./cmd/pinchtab
+```
+
+```bash macOS (Intel)
+GOOS=darwin GOARCH=amd64 go build -o pinchtab-darwin-amd64 ./cmd/pinchtab
+```
+
+```bash Linux (amd64)
+GOOS=linux GOARCH=amd64 go build -o pinchtab-linux-amd64 ./cmd/pinchtab
+```
+
+```bash Linux (arm64)
+GOOS=linux GOARCH=arm64 go build -o pinchtab-linux-arm64 ./cmd/pinchtab
+```
+</CodeGroup>
+
+## Dependencies
+
+From `go.mod`:
+
+```go
+module github.com/pinchtab/pinchtab
+
+go 1.25.0
+
+require (
+    github.com/chromedp/cdproto v0.0.0-20250803210736-d308e07a266d
+    github.com/chromedp/chromedp v0.14.2
+    github.com/gobwas/ws v1.4.0
+    gopkg.in/yaml.v3 v3.0.1
+)
+```
+
+**Key libraries:**
+- **chromedp**: Chrome DevTools Protocol implementation
+- **cdproto**: CDP protocol definitions
+- **gobwas/ws**: WebSocket client
+- **yaml.v3**: YAML configuration parsing
+
+## Running the Server
+
+### Start in Headless Mode
+
+```bash
+./pinchtab
+```
+
+**Expected output:**
+```
+🦀 PINCH! PINCH! port=9867
+auth disabled (set BRIDGE_TOKEN to enable)
+```
+
+### Start in Headed Mode
+
+See the browser window:
+
+```bash
+BRIDGE_HEADLESS=false ./pinchtab
+```
+
+### Run in Background
+
+```bash
+nohup ./pinchtab > pinchtab.log 2>&1 &
+tail -f pinchtab.log  # Watch logs
+```
+
+### Test the Server
+
+```bash
+curl http://localhost:9867/health
+```
+
+## Installing as System Binary
+
+Install to Go's bin directory for global access:
+
+```bash
+go build -o ~/go/bin/pinchtab ./cmd/pinchtab
+```
+
+Ensure `~/go/bin` is in your PATH:
+
+```bash
+export PATH=$PATH:~/go/bin
+# Add to ~/.bashrc or ~/.zshrc to persist
+```
+
+Now use `pinchtab` from anywhere:
+
+```bash
+pinchtab --version
+pinchtab serve
+```
+
+## Development Workflow
+
+### Setup Pre-commit Hooks
+
+PinchTab uses pre-commit hooks for code quality:
+
+```bash
+# Install pre-commit (one-time)
+pip install pre-commit
+# or: brew install pre-commit
+
+# Setup hooks in this repo
+pre-commit install
+
+# Optional: Run on all files to verify
+pre-commit run --all-files
+```
+
+### Code Formatting
+
+Format code before committing:
+
+```bash
+# Format all Go code
+gofmt -w .
+
+# Or use the script
+./scripts/format.sh
+```
+
+### Running Tests
+
+<CodeGroup>
+```bash All Tests
+go test ./...
+```
+
+```bash Verbose Output
+go test -v ./...
+```
+
+```bash With Coverage
+go test -cover ./...
+```
+
+```bash Coverage Report
+go test -coverprofile=coverage.out ./...
+go tool cover -html=coverage.out
+```
+
+```bash Specific Test
+go test -run TestName ./...
+```
+</CodeGroup>
+
+### Code Quality Checks
+
+```bash
+# Run linter
+golangci-lint run ./...
+
+# Run all pre-commit checks manually
+pre-commit run --all-files
+
+# Check dependencies
+go mod verify
+go list -m all
+```
+
+## Git Workflow for Contributors
+
+<Steps>
+  <Step title="Create feature branch">
+    ```bash
+    git checkout -b feature/your-feature
+    ```
+  </Step>
+
+  <Step title="Make changes">
+    Edit source files in your preferred editor.
+  </Step>
+
+  <Step title="Format and test">
+    ```bash
+    ./scripts/format.sh
+    go test ./...
+    ```
+  </Step>
+
+  <Step title="Commit changes">
+    ```bash
+    git add .
+    git commit -m "feat: description"
+    # Pre-commit hooks run automatically
+    ```
+  </Step>
+
+  <Step title="Push to GitHub">
+    ```bash
+    git push origin feature/your-feature
+    ```
+  </Step>
+
+  <Step title="Create Pull Request">
+    Open a PR on GitHub from your branch.
+  </Step>
+</Steps>
+
+## Continuous Integration
+
+GitHub Actions automatically runs on every push:
+
+- **Format checks**: `gofmt`
+- **Vet checks**: `go vet`
+- **Build verification**: Ensures code compiles
+- **Test suite**: Full test coverage
+- **Linting**: `golangci-lint`
+
+See `.github/workflows/` for CI configuration.
+
+## Troubleshooting
+
+### "go: command not found"
+
+**Solution**: Install Go or add it to PATH:
+
+```bash
+export PATH=$PATH:/usr/local/go/bin
+# Add to ~/.bashrc or ~/.zshrc
+```
+
+### "Chrome not found" at runtime
+
+**Solution**: Install Chromium or specify custom path:
+
+```bash
+CHROME_BIN=/path/to/chrome ./pinchtab
+```
+
+### Build errors with dependencies
+
+**Solution**: Clean and re-download modules:
+
+```bash
+go clean -modcache
+go mod download
+go mod verify
+```
+
+### "gofmt: command not found"
+
+**Solution**: gofmt comes with Go. Ensure Go is properly installed:
+
+```bash
+go version
+which gofmt
+```
+
+### Tests failing
+
+**Solution**: Run tests with verbose output to see details:
+
+```bash
+go test -v ./...
+```
+
+Check that Chrome is installed and accessible.
+
+### Port 9867 already in use
+
+**Solution**: Change the port:
+
+```bash
+BRIDGE_PORT=9868 ./pinchtab
+```
+
+Or find and kill the process using 9867:
+
+```bash
+lsof -i :9867
+kill -9 <PID>
+```
+
+## Useful Commands
+
+```bash
+# List all Go dependencies
+go list -m all
+
+# Update dependencies
+go get -u ./...
+
+# Clean build artifacts
+go clean
+
+# View build cache
+go clean -cache -n
+
+# List test functions
+go test -list .
+
+# Check for outdated modules
+go list -u -m all
+```
+
+## Resources
+
+- **GitHub Repository**: https://github.com/pinchtab/pinchtab
+- **Go Documentation**: https://golang.org/doc/
+- **Chrome DevTools Protocol**: https://chromedevtools.github.io/devtools-protocol/
+- **Chromedp Library**: https://github.com/chromedp/chromedp
+
+## Next Steps
+
+<CardGroup cols={2}>
+  <Card title="Development Guide" icon="code" href="/development">
+    Learn about PinchTab's architecture
+  </Card>
+  <Card title="Contributing" icon="users" href="/contributing">
+    Contribute to the project
+  </Card>
+  <Card title="Quick Start" icon="rocket" href="/quickstart">
+    Test your build with examples
+  </Card>
+  <Card title="API Reference" icon="book" href="/api-reference">
+    Explore the HTTP API
+  </Card>
+</CardGroup>

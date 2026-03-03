@@ -1,0 +1,470 @@
+---
+title: 'Docker Deployment Guide'
+description: 'Deploy PinchTab in Docker containers for production environments'
+---
+
+PinchTab includes a Docker image with bundled Chromium for easy deployment in containerized environments.
+
+## Quick Start
+
+### Using Docker Compose
+
+<Steps>
+  <Step title="Clone Repository">
+    ```bash
+    git clone https://github.com/pinchtab/pinchtab.git
+    cd pinchtab
+    ```
+  </Step>
+
+  <Step title="Start with Docker Compose">
+    ```bash
+    docker-compose up -d
+    ```
+  </Step>
+
+  <Step title="Check Logs">
+    ```bash
+    docker-compose logs -f
+    ```
+  </Step>
+
+  <Step title="Test Connection">
+    ```bash
+    curl http://localhost:9867/health
+    ```
+  </Step>
+</Steps>
+
+### Using Docker CLI
+
+<CodeGroup>
+```bash Build Image
+# Build from source
+docker build -t pinchtab .
+```
+
+```bash Run Container
+# Run with default settings
+docker run -d \
+  --name pinchtab \
+  -p 9867:9867 \
+  -v pinchtab-data:/data \
+  --security-opt seccomp=unconfined \
+  pinchtab
+```
+
+```bash Run with Auth
+# Run with authentication token
+docker run -d \
+  --name pinchtab \
+  -p 9867:9867 \
+  -v pinchtab-data:/data \
+  -e BRIDGE_TOKEN=your-secret-token \
+  --security-opt seccomp=unconfined \
+  pinchtab
+```
+</CodeGroup>
+
+## Configuration
+
+### Environment Variables
+
+| Variable | Description | Default |
+|----------|-------------|----------|
+| `BRIDGE_BIND` | Address to bind to | `0.0.0.0` (Docker) |
+| `BRIDGE_PORT` | HTTP port | `9867` |
+| `BRIDGE_TOKEN` | Auth token (optional) | - |
+| `BRIDGE_HEADLESS` | Run Chrome headless | `true` (Docker) |
+| `BRIDGE_STATE_DIR` | State directory | `/data` |
+| `BRIDGE_STEALTH` | Stealth level | `light` |
+| `BRIDGE_BLOCK_IMAGES` | Block image loading | `false` |
+| `BRIDGE_BLOCK_MEDIA` | Block all media | `false` |
+| `BRIDGE_NO_ANIMATIONS` | Disable CSS animations | `false` |
+| `CHROME_BINARY` | Chrome binary path | `/usr/bin/chromium-browser` |
+| `CHROME_FLAGS` | Chrome launch flags | `--no-sandbox --disable-gpu` |
+
+### Example docker-compose.yml
+
+```yaml
+services:
+  pinchtab:
+    build: .
+    container_name: pinchtab
+    ports:
+      - "9867:9867"
+    volumes:
+      - pinchtab-data:/data
+    environment:
+      - BRIDGE_BIND=0.0.0.0
+      - BRIDGE_PORT=9867
+      - BRIDGE_HEADLESS=true
+      - BRIDGE_TOKEN=${PINCHTAB_TOKEN:-}
+      - BRIDGE_STATE_DIR=/data
+      - BRIDGE_PROFILE=/data/chrome-profile
+    restart: unless-stopped
+    # Shared memory is critical for Chrome stability
+    shm_size: '2gb'
+    # Required for Chrome to work in container
+    security_opt:
+      - seccomp:unconfined
+    # Limit resources
+    mem_limit: 2g
+    cpus: '2.0'
+
+volumes:
+  pinchtab-data:
+```
+
+<Warning>
+  The container requires `--security-opt seccomp=unconfined` for Chrome to function properly. This is a limitation of running Chrome in containers.
+</Warning>
+
+## Dockerfile Breakdown
+
+The official Dockerfile uses a multi-stage build:
+
+```dockerfile
+# Build stage
+FROM golang:1.26-alpine AS builder
+RUN apk add --no-cache git
+WORKDIR /build
+COPY go.mod go.sum ./
+RUN go mod download
+COPY . .
+RUN go build -ldflags="-s -w" -o pinchtab ./cmd/pinchtab
+
+# Runtime stage
+FROM alpine:latest
+
+LABEL org.opencontainers.image.source="https://github.com/pinchtab/pinchtab"
+LABEL org.opencontainers.image.description="High-performance browser automation bridge"
+
+# Install Chromium and dependencies
+RUN apk add --no-cache \
+    chromium \
+    nss \
+    freetype \
+    harfbuzz \
+    ca-certificates \
+    ttf-freefont \
+    dumb-init
+
+# Create non-root user and state directory
+RUN adduser -D -g '' pinchtab && \
+    mkdir -p /data && \
+    chown pinchtab:pinchtab /data
+
+# Copy binary from builder
+COPY --from=builder /build/pinchtab /usr/local/bin/pinchtab
+
+# Switch to non-root user
+USER pinchtab
+WORKDIR /data
+
+# Environment variables
+ENV BRIDGE_BIND=0.0.0.0 \
+    BRIDGE_PORT=9867 \
+    BRIDGE_HEADLESS=true \
+    BRIDGE_STATE_DIR=/data \
+    BRIDGE_PROFILE=/data/chrome-profile \
+    CHROME_BINARY=/usr/bin/chromium-browser \
+    CHROME_FLAGS="--no-sandbox --disable-gpu"
+
+# Expose port
+EXPOSE 9867
+
+# Use dumb-init to properly handle signals
+ENTRYPOINT ["/usr/bin/dumb-init", "--"]
+
+# Run pinchtab
+CMD ["pinchtab"]
+```
+
+<Tip>
+  The image uses Alpine Linux for minimal size and includes all necessary dependencies for running Chrome.
+</Tip>
+
+## Architecture
+
+The Docker image:
+- Uses **Alpine Linux** for minimal size (~200MB total)
+- Includes **Chromium browser** (bundled)
+- Runs as **non-root user** for security
+- Uses **dumb-init** for proper signal handling
+- Persists state in **/data** volume
+- Listens on **0.0.0.0** (accessible from host)
+
+## Profiles & Dashboard Mode
+
+Docker runs PinchTab in **bridge mode** — a single headless Chrome instance with one default profile. This is the intended setup for containers.
+
+<Note>
+  The **profile management** feature (dashboard mode, multiple named Chrome profiles) is designed for **desktop/workstation** use where you might manage multiple browser identities from a GUI. It doesn't apply to Docker deployments.
+</Note>
+
+### Why Not Use Profiles in Docker?
+
+- Containers are ephemeral — profiles don't persist unless you mount `/data`
+- There's no user desktop or personal Chrome to coexist with
+- One container = one browser instance, which is the right model for automation
+
+<Tip>
+  If you need multiple isolated browser instances, run multiple containers rather than using the dashboard's profile system.
+</Tip>
+
+## Production Deployment
+
+### With Reverse Proxy (nginx)
+
+```nginx
+upstream pinchtab {
+    server localhost:9867;
+}
+
+server {
+    listen 443 ssl http2;
+    server_name pinchtab.example.com;
+
+    ssl_certificate /etc/ssl/certs/pinchtab.crt;
+    ssl_certificate_key /etc/ssl/private/pinchtab.key;
+
+    location / {
+        proxy_pass http://pinchtab;
+        proxy_set_header Host $host;
+        proxy_set_header X-Real-IP $remote_addr;
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto $scheme;
+        
+        # WebSocket support
+        proxy_http_version 1.1;
+        proxy_set_header Upgrade $http_upgrade;
+        proxy_set_header Connection "upgrade";
+        
+        # Increase timeouts for long operations
+        proxy_connect_timeout 60s;
+        proxy_send_timeout 60s;
+        proxy_read_timeout 60s;
+    }
+}
+```
+
+### Kubernetes Deployment
+
+```yaml
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: pinchtab
+spec:
+  replicas: 3
+  selector:
+    matchLabels:
+      app: pinchtab
+  template:
+    metadata:
+      labels:
+        app: pinchtab
+    spec:
+      containers:
+      - name: pinchtab
+        image: pinchtab/pinchtab:latest
+        ports:
+        - containerPort: 9867
+        env:
+        - name: BRIDGE_TOKEN
+          valueFrom:
+            secretKeyRef:
+              name: pinchtab-secret
+              key: token
+        - name: BRIDGE_HEADLESS
+          value: "true"
+        resources:
+          requests:
+            memory: "512Mi"
+            cpu: "500m"
+          limits:
+            memory: "2Gi"
+            cpu: "2000m"
+        volumeMounts:
+        - name: data
+          mountPath: /data
+        - name: dshm
+          mountPath: /dev/shm
+        securityContext:
+          capabilities:
+            add:
+            - SYS_ADMIN
+      volumes:
+      - name: data
+        emptyDir: {}
+      - name: dshm
+        emptyDir:
+          medium: Memory
+          sizeLimit: 2Gi
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: pinchtab
+spec:
+  selector:
+    app: pinchtab
+  ports:
+  - protocol: TCP
+    port: 9867
+    targetPort: 9867
+  type: LoadBalancer
+```
+
+### Security Best Practices
+
+<Steps>
+  <Step title="Set Authentication Token">
+    Always set `BRIDGE_TOKEN` in production:
+
+    ```bash
+    docker run -d \
+      -e BRIDGE_TOKEN=$(openssl rand -hex 32) \
+      pinchtab
+    ```
+  </Step>
+
+  <Step title="Use TLS">
+    Put PinchTab behind a reverse proxy with TLS:
+
+    ```bash
+    # Use nginx, Caddy, or Traefik
+    # Never expose port 9867 directly to the internet
+    ```
+  </Step>
+
+  <Step title="Limit Resources">
+    Set memory and CPU limits:
+
+    ```yaml
+    mem_limit: 2g
+    cpus: '2.0'
+    ```
+  </Step>
+
+  <Step title="Network Isolation">
+    Run on isolated networks:
+
+    ```yaml
+    networks:
+      - internal
+    ```
+  </Step>
+</Steps>
+
+## Troubleshooting
+
+### Chrome crashes
+
+Increase shared memory:
+
+```yaml
+shm_size: '2gb'
+```
+
+Or use `/dev/shm` mount:
+
+```bash
+docker run -d \
+  --shm-size=2g \
+  pinchtab
+```
+
+### Font issues
+
+The image includes basic fonts. For specific fonts:
+
+```dockerfile
+FROM pinchtab/pinchtab:latest
+
+USER root
+RUN apk add --no-cache ttf-liberation ttf-dejavu
+USER pinchtab
+```
+
+### Performance issues
+
+For better performance:
+
+<Tabs>
+  <Tab title="Shared Memory">
+    ```yaml
+    shm_size: '2gb'  # Critical for Chrome stability
+    ```
+  </Tab>
+
+  <Tab title="Resource Limits">
+    ```yaml
+    mem_limit: 4g
+    cpus: '4.0'
+    ```
+  </Tab>
+
+  <Tab title="Volume Mounts">
+    ```yaml
+    volumes:
+      - type: tmpfs
+        target: /tmp
+        tmpfs:
+          size: 1073741824  # 1GB
+    ```
+  </Tab>
+</Tabs>
+
+### Container won't start
+
+Check logs:
+
+```bash
+docker logs pinchtab
+```
+
+Common issues:
+- Missing `--security-opt seccomp=unconfined`
+- Insufficient memory
+- Port already in use
+
+### Chrome binary not found
+
+Verify Chrome is installed in container:
+
+```bash
+docker exec pinchtab which chromium-browser
+# Should output: /usr/bin/chromium-browser
+```
+
+## Resource Planning
+
+### Memory Requirements
+
+| Scenario | Recommended Memory |
+|----------|-------------------|
+| Single instance, light use | 512 MB |
+| Single instance, heavy use | 2 GB |
+| Multiple tabs (10+) | 4 GB |
+| High concurrency | 8 GB+ |
+
+### CPU Requirements
+
+| Scenario | Recommended CPUs |
+|----------|------------------|
+| Light automation | 0.5 cores |
+| Standard use | 1-2 cores |
+| Heavy rendering | 2-4 cores |
+
+### Storage Requirements
+
+- **Base image**: ~200 MB
+- **Chrome profile**: 50-200 MB per profile
+- **Temp files**: 100-500 MB
+- **Recommended**: 1 GB minimum
+
+<Tip>
+  Monitor actual usage with `docker stats pinchtab` and adjust limits accordingly.
+</Tip>

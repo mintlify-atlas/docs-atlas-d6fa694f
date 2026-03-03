@@ -1,0 +1,279 @@
+---
+title: 'API Overview'
+description: 'Introduction to the PinchTab REST API for browser automation'
+---
+
+## Introduction
+
+PinchTab provides a REST API for programmatic browser control. The API runs on **port 9867** and allows you to manage browser instances, control tabs, navigate pages, and automate user interactions.
+
+<Note>
+All API endpoints communicate with Chrome via the DevTools Protocol (CDP). PinchTab handles the complexity of CDP and exposes a simple REST interface.
+</Note>
+
+## Base URL
+
+```
+http://localhost:9867
+```
+
+All API requests use this base URL. The server listens on port 9867 by default.
+
+## Architecture
+
+PinchTab uses an **instance-scoped architecture**:
+
+<CardGroup cols={2}>
+  <Card title="PinchTab Server" icon="server">
+    HTTP server on port 9867 that manages all instances and routes requests
+  </Card>
+  <Card title="Chrome Instances" icon="browser">
+    Independent Chrome processes, each with its own profile and tabs
+  </Card>
+  <Card title="Profiles" icon="user">
+    Chrome user data directories that store cookies, history, and settings
+  </Card>
+  <Card title="Tabs" icon="window">
+    Individual browser pages within an instance
+  </Card>
+</CardGroup>
+
+```
+HTTP Client
+    │
+    ↓
+┌────────────────────────────┐
+│  PinchTab Server :9867     │
+│  - Instance management     │
+│  - Profile management      │
+│  - Request routing         │
+└────────┬───────────────────┘
+         │ DevTools Protocol
+         ├──────────────────┐
+         ↓                  ↓
+    ┌─────────┐        ┌─────────┐
+    │ Chrome 1│        │ Chrome 2│
+    │ headed  │        │headless │
+    │ Tab 1   │        │ Tab 1   │
+    │ Tab 2   │        └─────────┘
+    └─────────┘
+```
+
+## API Categories
+
+| Category | Endpoints | Purpose |
+|----------|-----------|---------|
+| **Instances** | `/instances/*` | Create, list, and manage browser instances |
+| **Profiles** | `/profiles/*` | Manage browser profiles (user data directories) |
+| **Tabs** | `/tabs/*` | List and manage tabs across instances |
+| **Navigation** | `/tabs/{id}/navigate` | Navigate tabs to URLs |
+| **Actions** | `/tabs/{id}/action`, `/tabs/{id}/actions` | Click, type, fill, press, hover, scroll |
+| **Snapshot** | `/tabs/{id}/snapshot` | Get accessibility tree (page structure) |
+| **Evaluation** | `/tabs/{id}/evaluate` | Execute JavaScript in pages |
+| **Screenshots** | `/tabs/{id}/screenshot` | Capture page screenshots |
+| **PDF** | `/tabs/{id}/pdf` | Export pages to PDF |
+| **Cookies** | `/tabs/{id}/cookies` | Get and set cookies |
+| **Stealth** | `/stealth/status`, `/fingerprint/rotate` | Stealth mode and fingerprint rotation |
+| **Metrics** | `/metrics`, `/tabs/{id}/metrics` | Performance and memory metrics |
+| **Downloads** | `/tabs/{id}/download`, `/tabs/{id}/upload` | File download and upload handling |
+| **Screencast** | `/screencast` | Live tab preview streaming |
+
+## Quick Start Example
+
+Here's a complete workflow that creates an instance, navigates to a page, takes a snapshot, and captures a screenshot:
+
+```bash
+#!/bin/bash
+BASE="http://localhost:9867"
+
+# 1. Start an instance
+INST=$(curl -s -X POST $BASE/instances/start \
+  -H "Content-Type: application/json" \
+  -d '{"mode":"headed"}' | jq -r '.id')
+
+echo "Instance: $INST"
+
+# 2. Open a tab with URL
+TAB=$(curl -s -X POST "$BASE/instances/$INST/tabs/open" \
+  -H "Content-Type: application/json" \
+  -d '{"url":"https://example.com"}' | jq -r '.tabId')
+
+echo "Tab: $TAB"
+
+# 3. Get page structure
+curl -s "$BASE/tabs/$TAB/snapshot?filter=interactive" | jq '.nodes[] | {ref, role, name}'
+
+# 4. Take screenshot
+curl -s "$BASE/tabs/$TAB/screenshot?quality=90" > screenshot.jpg
+
+echo "Screenshot saved to screenshot.jpg"
+
+# 5. Cleanup
+curl -s -X POST "$BASE/instances/$INST/stop"
+```
+
+## Response Format
+
+All API responses use JSON format (except binary endpoints like screenshots and PDFs).
+
+### Success Response
+
+```json
+{
+  "tabId": "tab_abc12345",
+  "url": "https://example.com",
+  "title": "Example Domain"
+}
+```
+
+### Error Response
+
+```json
+{
+  "error": "tab not found",
+  "statusCode": 404
+}
+```
+
+## HTTP Status Codes
+
+| Code | Meaning | When |
+|------|---------|------|
+| **200** | OK | Successful GET/POST request |
+| **201** | Created | Resource created (instance, profile) |
+| **204** | No Content | Successful DELETE |
+| **400** | Bad Request | Invalid JSON, missing required fields |
+| **404** | Not Found | Instance, profile, or tab not found |
+| **423** | Locked | Tab is locked by another owner |
+| **500** | Internal Server Error | Chrome error or server issue |
+
+## Authentication
+
+<Note>
+Authentication is optional. If configured, use Bearer token authentication.
+</Note>
+
+Set the `BRIDGE_TOKEN` environment variable when starting the server:
+
+```bash
+BRIDGE_TOKEN=your_secret_token pinchtab
+```
+
+Include the token in API requests:
+
+```bash
+curl -H "Authorization: Bearer your_secret_token" \
+  http://localhost:9867/instances
+```
+
+## Rate Limiting
+
+PinchTab does not enforce rate limits by default. For production use, consider implementing rate limiting at the reverse proxy level.
+
+## ID Formats
+
+PinchTab uses hash-based IDs for security:
+
+- **Profiles**: `prof_XXXXXXXX` (8-character hash)
+- **Instances**: `inst_XXXXXXXX` (8-character hash)
+- **Tabs**: `tab_XXXXXXXX` (8-character hash)
+
+<Warning>
+Raw Chrome DevTools Protocol target IDs are never exposed in the API for security reasons.
+</Warning>
+
+## SDKs and Libraries
+
+PinchTab uses a standard REST API. You can use any HTTP client:
+
+<CodeGroup>
+```bash cURL
+curl -X POST http://localhost:9867/instances/start \
+  -H "Content-Type: application/json" \
+  -d '{"mode":"headed"}'
+```
+
+```python Python
+import requests
+
+resp = requests.post("http://localhost:9867/instances/start",
+    json={"mode": "headed"})
+instance = resp.json()
+print(f"Instance: {instance['id']}")
+```
+
+```javascript JavaScript
+const resp = await fetch("http://localhost:9867/instances/start", {
+  method: "POST",
+  headers: { "Content-Type": "application/json" },
+  body: JSON.stringify({ mode: "headed" })
+});
+const instance = await resp.json();
+console.log(`Instance: ${instance.id}`);
+```
+
+```go Go
+package main
+
+import (
+    "bytes"
+    "encoding/json"
+    "net/http"
+)
+
+func main() {
+    body := map[string]string{"mode": "headed"}
+    data, _ := json.Marshal(body)
+    
+    resp, _ := http.Post(
+        "http://localhost:9867/instances/start",
+        "application/json",
+        bytes.NewReader(data),
+    )
+    defer resp.Body.Close()
+}
+```
+</CodeGroup>
+
+## Next Steps
+
+<CardGroup cols={2}>
+  <Card title="Authentication" icon="lock" href="/api/authentication">
+    Learn about API authentication and security
+  </Card>
+  <Card title="Instances API" icon="server" href="/api/instances">
+    Create and manage browser instances
+  </Card>
+  <Card title="Navigation" icon="compass" href="/api/navigation">
+    Navigate tabs to URLs
+  </Card>
+  <Card title="Actions API" icon="hand-pointer" href="/api/actions">
+    Automate clicks, typing, and interactions
+  </Card>
+</CardGroup>
+
+## Design Principles
+
+1. **Instance-Scoped** — All operations target a specific instance
+2. **Stateful** — Cookies, history, and sessions persist within instances
+3. **Multi-Agent Safe** — Each agent can use its own isolated instance
+4. **Profile-Based** — Each instance uses a Chrome profile for state persistence
+5. **Hash-Based IDs** — Secure IDs prevent guessing and information leakage
+
+## Health Check
+
+Verify the server is running:
+
+```bash
+curl http://localhost:9867/health
+```
+
+Response:
+
+```json
+{
+  "status": "ok",
+  "version": "1.0.0",
+  "uptime": 3600
+}
+```

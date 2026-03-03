@@ -1,0 +1,428 @@
+---
+title: 'Server Command'
+description: 'Start and manage the PinchTab server'
+icon: 'server'
+---
+
+# Server Command
+
+The default `pinchtab` command starts the dashboard server, which manages browser instances and provides the HTTP/WebSocket API.
+
+## Start Server
+
+```bash
+pinchtab
+```
+
+Output:
+```
+time=2024-03-15T10:30:00.000Z level=INFO msg="🦀 PinchTab" port=9867
+time=2024-03-15T10:30:00.500Z level=INFO msg="dashboard ready" url=http://localhost:9867
+```
+
+The server:
+- Listens on `http://127.0.0.1:9867` by default
+- Serves the dashboard UI at `/dashboard`
+- Exposes HTTP and WebSocket APIs
+- Manages browser instance lifecycle
+- Orchestrates profile-based instances
+
+## Server Modes
+
+### Dashboard Mode (Default)
+
+Runs the orchestrator/dashboard without launching Chrome:
+
+```bash
+pinchtab
+```
+
+Features:
+- Web dashboard at `http://localhost:9867/dashboard`
+- Instance management
+- Profile management
+- API endpoints for CLI commands
+- No Chrome process until instance is launched
+
+### Bridge-Only Mode
+
+<Note>
+Bridge-only mode is used internally by the orchestrator. You typically don't run this manually.
+</Note>
+
+Launches a Chrome instance with bridge API:
+
+```bash
+export BRIDGE_ONLY=1
+pinchtab
+```
+
+This mode:
+- Launches Chrome immediately
+- Provides direct browser control
+- No dashboard UI
+- Used for managed instances
+
+## Configuration Options
+
+### Port Configuration
+
+```bash
+# Change server port
+export BRIDGE_PORT=9868
+pinchtab
+```
+
+```bash
+# Listen on all interfaces (not just localhost)
+export BRIDGE_BIND=0.0.0.0
+pinchtab
+```
+
+### Headless vs Headed
+
+```bash
+# Headless (default)
+export BRIDGE_HEADLESS=true
+pinchtab
+
+# Headed (show browser window)
+export BRIDGE_HEADLESS=false
+pinchtab
+```
+
+### Authentication
+
+```bash
+# Require authentication token
+export BRIDGE_TOKEN=sk_your_secret_token
+pinchtab
+```
+
+Clients must then provide the token:
+
+```bash
+export PINCHTAB_TOKEN=sk_your_secret_token
+pinchtab nav https://example.com
+```
+
+### State Directory
+
+```bash
+# Custom state directory
+export BRIDGE_STATE_DIR=/var/lib/pinchtab
+pinchtab
+```
+
+The state directory contains:
+- `profiles/` - Browser profiles (user data)
+- `chrome-profile/` - Default Chrome user data
+- `config.json` - Configuration file
+
+## Auto-Launch Instances
+
+<ParamField path="PINCHTAB_AUTO_LAUNCH" type="boolean" default="false">
+  Automatically launch a browser instance on startup.
+  
+  ```bash
+  export PINCHTAB_AUTO_LAUNCH=true
+  pinchtab
+  ```
+</ParamField>
+
+<ParamField path="PINCHTAB_DEFAULT_PROFILE" type="string" default="default">
+  Profile to auto-launch.
+  
+  ```bash
+  export PINCHTAB_AUTO_LAUNCH=true
+  export PINCHTAB_DEFAULT_PROFILE=my-profile
+  pinchtab
+  ```
+</ParamField>
+
+<ParamField path="PINCHTAB_DEFAULT_PORT" type="string">
+  Port for auto-launched instance.
+  
+  ```bash
+  export PINCHTAB_AUTO_LAUNCH=true
+  export PINCHTAB_DEFAULT_PORT=9868
+  pinchtab
+  ```
+</ParamField>
+
+<ParamField path="PINCHTAB_HEADED" type="string">
+  Launch headed instance (show browser window).
+  
+  ```bash
+  export PINCHTAB_AUTO_LAUNCH=true
+  export PINCHTAB_HEADED=1
+  pinchtab
+  ```
+</ParamField>
+
+Example with auto-launch:
+
+```bash
+export PINCHTAB_AUTO_LAUNCH=true
+export PINCHTAB_HEADED=1
+pinchtab
+```
+
+Output:
+```
+time=2024-03-15T10:30:00.000Z level=INFO msg="🦀 PinchTab" port=9867
+time=2024-03-15T10:30:00.500Z level=INFO msg="dashboard ready" url=http://localhost:9867
+time=2024-03-15T10:30:01.000Z level=INFO msg="auto-launched instance" profile=default id=inst_abc123 port=9868 headless=false
+```
+
+## Background vs Foreground
+
+### Foreground (Recommended for Development)
+
+```bash
+pinchtab
+```
+
+Logs appear in terminal. Press `Ctrl+C` to stop.
+
+### Background
+
+```bash
+pinchtab &
+echo $! > /tmp/pinchtab.pid
+```
+
+Stop the server:
+
+```bash
+kill $(cat /tmp/pinchtab.pid)
+```
+
+Or use `nohup`:
+
+```bash
+nohup pinchtab > /var/log/pinchtab.log 2>&1 &
+```
+
+### Using systemd (Linux)
+
+Create `/etc/systemd/system/pinchtab.service`:
+
+```ini
+[Unit]
+Description=PinchTab Browser Automation
+After=network.target
+
+[Service]
+Type=simple
+User=pinchtab
+WorkingDirectory=/home/pinchtab
+ExecStart=/usr/local/bin/pinchtab
+Restart=on-failure
+RestartSec=5s
+
+Environment="BRIDGE_PORT=9867"
+Environment="BRIDGE_STATE_DIR=/var/lib/pinchtab"
+Environment="BRIDGE_TOKEN=sk_your_secret_token"
+Environment="BRIDGE_HEADLESS=true"
+
+[Install]
+WantedBy=multi-user.target
+```
+
+Enable and start:
+
+```bash
+sudo systemctl enable pinchtab
+sudo systemctl start pinchtab
+sudo systemctl status pinchtab
+```
+
+View logs:
+
+```bash
+sudo journalctl -u pinchtab -f
+```
+
+## Health Check
+
+```bash
+pinchtab health
+```
+
+Output:
+```json
+{
+  "status": "ok",
+  "mode": "dashboard"
+}
+```
+
+Or use curl:
+
+```bash
+curl http://localhost:9867/health
+```
+
+```json
+{
+  "status": "ok",
+  "mode": "dashboard"
+}
+```
+
+## Shutdown Server
+
+### Graceful Shutdown
+
+Press `Ctrl+C` in the terminal running the server:
+
+```
+^C
+time=2024-03-15T10:35:00.000Z level=INFO msg="shutting down dashboard..."
+```
+
+Or via API:
+
+```bash
+curl -X POST http://localhost:9867/shutdown
+```
+
+### Force Shutdown
+
+Press `Ctrl+C` twice to force shutdown:
+
+```
+^C
+time=2024-03-15T10:35:00.000Z level=INFO msg="shutting down dashboard..."
+^C
+time=2024-03-15T10:35:01.000Z level=WARN msg="force shutdown requested"
+```
+
+## Monitoring
+
+The server logs health information every 30 seconds:
+
+```
+time=2024-03-15T10:30:30.000Z level=INFO msg="health check" instances=2 headed=1 headless=1 total_tabs=5
+```
+
+### Metrics Endpoint
+
+```bash
+curl http://localhost:9867/metrics
+```
+
+```json
+{
+  "metrics": {
+    "snapshots": 42,
+    "navigations": 15,
+    "actions": 128
+  }
+}
+```
+
+## Common Issues
+
+### Port Already in Use
+
+```
+listen tcp 127.0.0.1:9867: bind: address already in use
+```
+
+Solution:
+
+```bash
+# Find process using port
+lsof -i :9867
+
+# Kill it
+kill -9 <PID>
+
+# Or use different port
+export BRIDGE_PORT=9868
+pinchtab
+```
+
+### Chrome Not Found
+
+```
+chrome binary not found
+```
+
+Solution:
+
+```bash
+# Specify Chrome path
+export CHROME_BIN=/Applications/Google\ Chrome.app/Contents/MacOS/Google\ Chrome
+pinchtab
+
+# Or let PinchTab download Chrome
+# (downloads to ~/.pinchtab/chrome-<version>)
+pinchtab
+```
+
+### Permission Denied (State Directory)
+
+```
+cannot create profiles dir: permission denied
+```
+
+Solution:
+
+```bash
+# Create directory with correct permissions
+mkdir -p ~/.pinchtab
+chmod 755 ~/.pinchtab
+
+# Or use custom directory
+export BRIDGE_STATE_DIR=/tmp/pinchtab
+pinchtab
+```
+
+## Production Deployment
+
+<Warning>
+In production, always:
+- Set `BRIDGE_TOKEN` for authentication
+- Use `BRIDGE_HEADLESS=true`
+- Configure proper state directory
+- Set up process monitoring (systemd/supervisor)
+- Enable firewall rules
+</Warning>
+
+Example production configuration:
+
+```bash
+export BRIDGE_PORT=9867
+export BRIDGE_BIND=0.0.0.0
+export BRIDGE_TOKEN=sk_prod_$(openssl rand -hex 32)
+export BRIDGE_HEADLESS=true
+export BRIDGE_STATE_DIR=/var/lib/pinchtab
+export BRIDGE_MAX_TABS=50
+export BRIDGE_BLOCK_ADS=true
+export PINCHTAB_AUTO_LAUNCH=true
+
+pinchtab
+```
+
+## Next Steps
+
+<CardGroup cols={2}>
+  <Card title="Instance Management" icon="layer-group" href="/cli/instance">
+    Launch and control browser instances
+  </Card>
+  
+  <Card title="Profile Management" icon="user" href="/cli/profile">
+    Manage browser profiles
+  </Card>
+  
+  <Card title="Navigation" icon="compass" href="/cli/navigate">
+    Navigate to URLs
+  </Card>
+  
+  <Card title="Configuration" icon="gear" href="/cli/configuration">
+    Environment variables and config files
+  </Card>
+</CardGroup>

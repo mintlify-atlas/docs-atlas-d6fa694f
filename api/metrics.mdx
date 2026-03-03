@@ -1,0 +1,541 @@
+---
+title: 'Metrics API'
+description: 'Monitor performance and memory metrics'
+---
+
+## Overview
+
+The Metrics API provides performance and resource usage data for:
+
+- Server-level metrics (requests, latency, memory)
+- Tab-level metrics (JS heap, DOM nodes, listeners)
+- Instance metrics (memory usage per instance)
+
+## Get Server Metrics
+
+Retrieve server-wide performance metrics.
+
+```http
+GET /metrics
+```
+
+<CodeGroup>
+```bash cURL
+curl http://localhost:9867/metrics | jq .
+```
+
+```python Python
+import requests
+
+resp = requests.get("http://localhost:9867/metrics")
+metrics = resp.json()
+
+print(f"Total requests: {metrics['requestsTotal']}")
+print(f"Failed requests: {metrics['requestsFailed']}")
+print(f"Avg latency: {metrics['avgLatencyMs']:.2f}ms")
+print(f"Heap usage: {metrics['goHeapAllocMB']:.2f}MB")
+print(f"Goroutines: {metrics['goNumGoroutine']}")
+```
+
+```javascript JavaScript
+const resp = await fetch("http://localhost:9867/metrics");
+const metrics = await resp.json();
+
+console.log(`Requests: ${metrics.requestsTotal}`);
+console.log(`Heap: ${metrics.goHeapAllocMB.toFixed(2)}MB`);
+console.log(`Goroutines: ${metrics.goNumGoroutine}`);
+```
+</CodeGroup>
+
+### Response (200 OK)
+
+```json
+{
+  "requestsTotal": 1245,
+  "requestsFailed": 12,
+  "avgLatencyMs": 125.5,
+  "rateLimited": 0,
+  "staleRefRetries": 8,
+  "rateBucketHosts": 15,
+  "goHeapAllocMB": 45.32,
+  "goHeapSysMB": 67.89,
+  "goNumGoroutine": 23,
+  "goHeapObjects": 234567,
+  "goGCPauseNs": 150000,
+  "goNumGC": 45
+}
+```
+
+### Response Fields
+
+<ResponseField name="requestsTotal" type="integer" required>
+  Total API requests served
+</ResponseField>
+
+<ResponseField name="requestsFailed" type="integer" required>
+  Number of failed requests
+</ResponseField>
+
+<ResponseField name="avgLatencyMs" type="number" required>
+  Average request latency in milliseconds
+</ResponseField>
+
+<ResponseField name="rateLimited" type="integer" required>
+  Number of rate-limited requests
+</ResponseField>
+
+<ResponseField name="staleRefRetries" type="integer" required>
+  Number of automatic retries due to stale element references
+</ResponseField>
+
+<ResponseField name="rateBucketHosts" type="integer" required>
+  Number of hosts being tracked for rate limiting
+</ResponseField>
+
+<ResponseField name="goHeapAllocMB" type="number" required>
+  Go heap memory allocated in MB
+</ResponseField>
+
+<ResponseField name="goHeapSysMB" type="number" required>
+  Go heap memory obtained from OS in MB
+</ResponseField>
+
+<ResponseField name="goNumGoroutine" type="integer" required>
+  Number of active goroutines
+</ResponseField>
+
+<ResponseField name="goHeapObjects" type="integer" required>
+  Number of objects allocated on heap
+</ResponseField>
+
+<ResponseField name="goGCPauseNs" type="integer" required>
+  Last garbage collection pause in nanoseconds
+</ResponseField>
+
+<ResponseField name="goNumGC" type="integer" required>
+  Number of completed GC cycles
+</ResponseField>
+
+---
+
+## Get Tab Metrics
+
+Retrieve memory and performance metrics for a specific tab.
+
+```http
+GET /tabs/{id}/metrics
+```
+
+<CodeGroup>
+```bash cURL
+curl http://localhost:9867/tabs/tab_abc123/metrics | jq .
+```
+
+```python Python
+import requests
+
+resp = requests.get("http://localhost:9867/tabs/tab_abc123/metrics")
+metrics = resp.json()
+
+print(f"JS Heap Used: {metrics['jsHeapUsedMB']:.2f}MB")
+print(f"JS Heap Total: {metrics['jsHeapTotalMB']:.2f}MB")
+print(f"Documents: {metrics['documents']}")
+print(f"Frames: {metrics['frames']}")
+print(f"DOM Nodes: {metrics['nodes']}")
+print(f"Event Listeners: {metrics['listeners']}")
+```
+
+```javascript JavaScript
+const resp = await fetch(
+  "http://localhost:9867/tabs/tab_abc123/metrics"
+);
+const metrics = await resp.json();
+
+console.log(`Heap: ${metrics.jsHeapUsedMB.toFixed(2)}MB`);
+console.log(`Nodes: ${metrics.nodes}`);
+console.log(`Listeners: ${metrics.listeners}`);
+```
+</CodeGroup>
+
+### Response (200 OK)
+
+```json
+{
+  "jsHeapUsedMB": 25.6,
+  "jsHeapTotalMB": 48.3,
+  "documents": 1,
+  "frames": 3,
+  "nodes": 1458,
+  "listeners": 234
+}
+```
+
+### Response Fields
+
+<ResponseField name="jsHeapUsedMB" type="number" required>
+  JavaScript heap memory in use (MB)
+</ResponseField>
+
+<ResponseField name="jsHeapTotalMB" type="number" required>
+  Total JavaScript heap memory allocated (MB)
+</ResponseField>
+
+<ResponseField name="documents" type="integer" required>
+  Number of documents
+</ResponseField>
+
+<ResponseField name="frames" type="integer" required>
+  Number of frames (including iframes)
+</ResponseField>
+
+<ResponseField name="nodes" type="integer" required>
+  Number of DOM nodes
+</ResponseField>
+
+<ResponseField name="listeners" type="integer" required>
+  Number of event listeners
+</ResponseField>
+
+---
+
+## Monitoring Example
+
+```python
+import requests
+import time
+
+BASE = "http://localhost:9867"
+
+def monitor_server(interval_seconds=30):
+    """Monitor server metrics"""
+    while True:
+        resp = requests.get(f"{BASE}/metrics")
+        m = resp.json()
+        
+        print(f"\n--- Server Metrics ---")
+        print(f"Requests: {m['requestsTotal']} ({m['requestsFailed']} failed)")
+        print(f"Avg Latency: {m['avgLatencyMs']:.2f}ms")
+        print(f"Heap: {m['goHeapAllocMB']:.2f}MB / {m['goHeapSysMB']:.2f}MB")
+        print(f"Goroutines: {m['goNumGoroutine']}")
+        print(f"GC Pause: {m['goGCPauseNs'] / 1000000:.2f}ms")
+        
+        time.sleep(interval_seconds)
+
+# Start monitoring
+monitor_server(30)
+```
+
+---
+
+## Tab Memory Tracking
+
+```python
+def track_tab_memory(tab_id, duration_seconds=60, interval=5):
+    """Track tab memory over time"""
+    import time
+    
+    measurements = []
+    start_time = time.time()
+    
+    while time.time() - start_time < duration_seconds:
+        resp = requests.get(f"http://localhost:9867/tabs/{tab_id}/metrics")
+        m = resp.json()
+        
+        measurements.append({
+            "timestamp": time.time(),
+            "heapUsed": m["jsHeapUsedMB"],
+            "nodes": m["nodes"],
+            "listeners": m["listeners"]
+        })
+        
+        print(f"Heap: {m['jsHeapUsedMB']:.2f}MB | Nodes: {m['nodes']} | Listeners: {m['listeners']}")
+        
+        time.sleep(interval)
+    
+    return measurements
+
+# Track memory for 60 seconds
+data = track_tab_memory("tab_abc123", duration_seconds=60, interval=5)
+
+# Analyze
+max_heap = max(m["heapUsed"] for m in data)
+avg_nodes = sum(m["nodes"] for m in data) / len(data)
+
+print(f"\nMax heap: {max_heap:.2f}MB")
+print(f"Avg nodes: {avg_nodes:.0f}")
+```
+
+---
+
+## Memory Leak Detection
+
+```python
+def detect_memory_leak(tab_id, url, iterations=10):
+    """Detect potential memory leaks by repeated navigation"""
+    import time
+    
+    heap_sizes = []
+    
+    for i in range(iterations):
+        # Navigate
+        requests.post(f"http://localhost:9867/tabs/{tab_id}/navigate",
+            json={"url": url, "waitFor": "networkidle"})
+        
+        time.sleep(2)
+        
+        # Get metrics
+        resp = requests.get(f"http://localhost:9867/tabs/{tab_id}/metrics")
+        heap = resp.json()["jsHeapUsedMB"]
+        heap_sizes.append(heap)
+        
+        print(f"Iteration {i+1}: {heap:.2f}MB")
+    
+    # Analyze trend
+    if heap_sizes[-1] > heap_sizes[0] * 1.5:
+        print("\n⚠️  Potential memory leak detected!")
+        print(f"Initial: {heap_sizes[0]:.2f}MB")
+        print(f"Final: {heap_sizes[-1]:.2f}MB")
+        print(f"Increase: {((heap_sizes[-1] / heap_sizes[0]) - 1) * 100:.1f}%")
+    else:
+        print("\n✓ No significant memory growth")
+    
+    return heap_sizes
+
+# Test for memory leaks
+detect_memory_leak("tab_abc123", "https://example.com", iterations=10)
+```
+
+---
+
+## Performance Dashboard Example
+
+```python
+import requests
+import time
+from datetime import datetime
+
+BASE = "http://localhost:9867"
+
+def performance_dashboard():
+    """Display real-time performance dashboard"""
+    while True:
+        # Clear screen
+        print("\033[2J\033[H")
+        
+        # Server metrics
+        server = requests.get(f"{BASE}/metrics").json()
+        
+        print("=" * 60)
+        print(f"PinchTab Performance Dashboard - {datetime.now().strftime('%H:%M:%S')}")
+        print("=" * 60)
+        
+        print("\n📊 Server Metrics:")
+        print(f"  Total Requests:    {server['requestsTotal']:,}")
+        print(f"  Failed Requests:   {server['requestsFailed']:,}")
+        success_rate = (1 - server['requestsFailed'] / max(server['requestsTotal'], 1)) * 100
+        print(f"  Success Rate:      {success_rate:.2f}%")
+        print(f"  Avg Latency:       {server['avgLatencyMs']:.2f}ms")
+        
+        print("\n💾 Memory:")
+        print(f"  Heap Allocated:    {server['goHeapAllocMB']:.2f}MB")
+        print(f"  Heap System:       {server['goHeapSysMB']:.2f}MB")
+        print(f"  Heap Objects:      {server['goHeapObjects']:,}")
+        
+        print("\n⚙️  Runtime:")
+        print(f"  Goroutines:        {server['goNumGoroutine']}")
+        print(f"  GC Cycles:         {server['goNumGC']}")
+        print(f"  Last GC Pause:     {server['goGCPauseNs'] / 1000000:.2f}ms")
+        
+        # Get all tabs
+        tabs = requests.get(f"{BASE}/tabs").json()
+        
+        print(f"\n📑 Active Tabs: {len(tabs)}")
+        
+        for tab in tabs[:5]:  # Show first 5 tabs
+            try:
+                metrics = requests.get(f"{BASE}/tabs/{tab['id']}/metrics").json()
+                print(f"  {tab['id'][:12]}: {metrics['jsHeapUsedMB']:.1f}MB | {metrics['nodes']} nodes")
+            except:
+                pass
+        
+        print("\n" + "=" * 60)
+        print("Press Ctrl+C to exit")
+        
+        time.sleep(5)
+
+# Run dashboard
+try:
+    performance_dashboard()
+except KeyboardInterrupt:
+    print("\nDashboard stopped")
+```
+
+---
+
+## Alerting Example
+
+```python
+import requests
+import time
+
+HEAP_THRESHOLD_MB = 100
+NODE_THRESHOLD = 5000
+
+def monitor_with_alerts(tab_id):
+    """Monitor tab and alert on high resource usage"""
+    while True:
+        resp = requests.get(f"http://localhost:9867/tabs/{tab_id}/metrics")
+        m = resp.json()
+        
+        # Check heap usage
+        if m["jsHeapUsedMB"] > HEAP_THRESHOLD_MB:
+            print(f"⚠️  HIGH HEAP USAGE: {m['jsHeapUsedMB']:.2f}MB")
+            # Could send email, Slack notification, etc.
+        
+        # Check DOM node count
+        if m["nodes"] > NODE_THRESHOLD:
+            print(f"⚠️  HIGH DOM NODE COUNT: {m['nodes']}")
+        
+        # Check listener count (potential leak indicator)
+        if m["listeners"] > m["nodes"]:
+            print(f"⚠️  MORE LISTENERS THAN NODES: {m['listeners']} listeners, {m['nodes']} nodes")
+        
+        time.sleep(10)
+
+# Start monitoring
+monitor_with_alerts("tab_abc123")
+```
+
+---
+
+## Best Practices
+
+### Monitor Regularly
+
+```python
+# ✅ Good: Regular monitoring
+def run_task_with_monitoring(tab_id):
+    # Check metrics before
+    before = requests.get(f"{BASE}/tabs/{tab_id}/metrics").json()
+    
+    # Run task
+    do_work(tab_id)
+    
+    # Check metrics after
+    after = requests.get(f"{BASE}/tabs/{tab_id}/metrics").json()
+    
+    # Alert if significant increase
+    if after["jsHeapUsedMB"] > before["jsHeapUsedMB"] * 2:
+        print("Warning: Heap doubled during task")
+```
+
+### Set Thresholds
+
+```python
+THRESHOLDS = {
+    "jsHeapUsedMB": 150,
+    "nodes": 10000,
+    "listeners": 5000
+}
+
+def check_thresholds(tab_id):
+    metrics = requests.get(f"{BASE}/tabs/{tab_id}/metrics").json()
+    
+    for key, threshold in THRESHOLDS.items():
+        if metrics[key] > threshold:
+            print(f"⚠️  {key} exceeded threshold: {metrics[key]} > {threshold}")
+```
+
+### Log Metrics
+
+```python
+import json
+from datetime import datetime
+
+def log_metrics(tab_id, log_file="metrics.jsonl"):
+    """Log metrics to file"""
+    metrics = requests.get(f"http://localhost:9867/tabs/{tab_id}/metrics").json()
+    metrics["timestamp"] = datetime.now().isoformat()
+    
+    with open(log_file, "a") as f:
+        f.write(json.dumps(metrics) + "\n")
+```
+
+---
+
+## Use Cases
+
+### Performance Testing
+
+Monitor resource usage during load tests:
+
+```python
+# Before test
+initial = requests.get(f"{BASE}/metrics").json()
+
+# Run load test
+run_load_test()
+
+# After test
+final = requests.get(f"{BASE}/metrics").json()
+
+print(f"Requests processed: {final['requestsTotal'] - initial['requestsTotal']}")
+print(f"Avg latency: {final['avgLatencyMs']:.2f}ms")
+```
+
+### Memory Profiling
+
+Track memory usage patterns:
+
+```python
+# Profile page memory over time
+measurements = track_tab_memory(tab_id, duration_seconds=300, interval=10)
+
+# Analyze
+import matplotlib.pyplot as plt
+plt.plot([m["heapUsed"] for m in measurements])
+plt.title("Tab Memory Usage Over Time")
+plt.ylabel("Heap (MB)")
+plt.xlabel("Measurement")
+plt.show()
+```
+
+### Health Checks
+
+Monitor server health:
+
+```python
+def health_check():
+    metrics = requests.get("http://localhost:9867/metrics").json()
+    
+    # Check if healthy
+    if metrics["requestsFailed"] / max(metrics["requestsTotal"], 1) > 0.1:
+        return False, "High failure rate"
+    
+    if metrics["goHeapAllocMB"] > 500:
+        return False, "High memory usage"
+    
+    if metrics["goNumGoroutine"] > 1000:
+        return False, "Too many goroutines"
+    
+    return True, "Healthy"
+```
+
+---
+
+## Next Steps
+
+<CardGroup cols={2}>
+  <Card title="Instances API" icon="server" href="/api/instances">
+    Monitor instance performance
+  </Card>
+  <Card title="Tabs API" icon="window" href="/api/tabs">
+    Track tab resource usage
+  </Card>
+  <Card title="Screencast" icon="video" href="/api/screencast">
+    Visual monitoring
+  </Card>
+  <Card title="Health Check" icon="heart-pulse" href="/api/overview">
+    Server health endpoint
+  </Card>
+</CardGroup>

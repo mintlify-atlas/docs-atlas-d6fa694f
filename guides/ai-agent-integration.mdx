@@ -1,0 +1,535 @@
+---
+title: 'AI Agent Integration'
+description: 'Integrate PinchTab with AI agents for autonomous web automation'
+---
+
+PinchTab is designed for AI agents to control browsers autonomously. This guide shows you how to integrate with popular AI frameworks and optimize for token efficiency.
+
+## Quick Integration
+
+### Node.js with TypeScript
+
+PinchTab provides an official npm package with full TypeScript support:
+
+```typescript
+import Pinchtab from 'pinchtab';
+
+const browser = new Pinchtab({
+  port: 9867,
+  timeout: 30000
+});
+
+// Start the server
+await browser.start();
+
+// Create a new tab
+const { tabId } = await browser.createTab({
+  url: 'https://example.com'
+});
+
+// Get page snapshot
+const snapshot = await browser.snapshot({
+  refs: 'aria',
+  format: 'compact'
+});
+
+// Click an element
+await browser.click({ ref: 'e5' });
+
+// Cleanup
+await browser.stop();
+```
+
+### Python Integration
+
+```python
+import requests
+import json
+
+class PinchTab:
+    def __init__(self, base_url="http://localhost:9867"):
+        self.base_url = base_url
+        self.session = requests.Session()
+    
+    def create_tab(self, url):
+        response = self.session.post(
+            f"{self.base_url}/tab/create",
+            json={"url": url}
+        )
+        return response.json()["tabId"]
+    
+    def snapshot(self, tab_id=None):
+        params = {"tabId": tab_id} if tab_id else {}
+        response = self.session.get(
+            f"{self.base_url}/snapshot",
+            params=params
+        )
+        return response.json()
+    
+    def click(self, ref, tab_id=None):
+        self.session.post(
+            f"{self.base_url}/tab/click",
+            json={"ref": ref, "targetId": tab_id}
+        )
+
+# Usage
+browser = PinchTab()
+tab_id = browser.create_tab("https://example.com")
+snapshot = browser.snapshot(tab_id)
+print(f"Found {len(snapshot['nodes'])} interactive elements")
+```
+
+### Shell Script / curl
+
+```bash
+#!/bin/bash
+
+# Navigate to page
+curl -X POST http://localhost:9867/navigate \
+  -H "Content-Type: application/json" \
+  -d '{"url": "https://example.com"}'
+
+# Wait for page load
+sleep 3
+
+# Get snapshot with interactive elements only
+curl "http://localhost:9867/snapshot?filter=interactive" | jq .
+
+# Click element with ref e5
+curl -X POST http://localhost:9867/action \
+  -H "Content-Type: application/json" \
+  -d '{"kind":"click","ref":"e5"}'
+```
+
+## Token Optimization
+
+<Note>
+  PinchTab can reduce token usage by **93%** compared to screenshot-based approaches through text extraction and smart filtering.
+</Note>
+
+### The 3-Second Rule
+
+Chrome's accessibility tree takes time to populate. Always wait after navigation:
+
+```bash
+# ❌ BAD: Snapshot immediately
+curl -X POST http://localhost:9867/navigate -d '{"url":"https://news.example.com"}'
+curl http://localhost:9867/snapshot  # Returns only 1 node!
+
+# ✅ GOOD: Wait 3+ seconds
+curl -X POST http://localhost:9867/navigate -d '{"url":"https://news.example.com"}'
+sleep 3
+curl http://localhost:9867/snapshot  # Returns 2,645 nodes
+```
+
+<Warning>
+  Early snapshots may return only the RootWebArea node. Wait 3-5 seconds for full accessibility tree population.
+</Warning>
+
+### Pattern-Driven Scraping
+
+For headline/title extraction, use this optimized pattern:
+
+```bash
+curl -X POST http://localhost:9867/navigate \
+  -H "Content-Type: application/json" \
+  -d '{"url": "https://news.example.com"}' && \
+sleep 3 && \
+curl http://localhost:9867/snapshot | \
+jq '.nodes[] | select(.name | length > 15) | .name' | \
+head -30
+```
+
+**Why this works:**
+1. Navigate + wait ensures full accessibility tree
+2. jq filter extracts text nodes only (eliminates UI chrome)
+3. `length > 15` filters out buttons, labels, tiny text
+4. `head -30` limits output (saves tokens)
+
+**Token savings:**
+- Pattern-driven: ~272 tokens (30 headlines)
+- Exploratory: ~3,842 tokens (same content)
+- **Savings: 93%**
+
+### System Prompt Template
+
+Use this in your AI agent's system prompt:
+
+```
+# Pinchtab Scraping Instructions
+
+When extracting headlines from a website:
+
+1. Use EXACTLY this curl pattern (do not deviate):
+   
+   curl -X POST http://localhost:9867/navigate \
+     -H "Content-Type: application/json" \
+     -d '{"url": "TARGET_URL"}' && \
+   sleep 3 && \
+   curl http://localhost:9867/snapshot | \
+   jq '.nodes[] | select(.name | length > 15) | .name' | \
+   head -30
+
+2. Replace TARGET_URL with the site URL
+3. Report the headlines (limit to 20 unique items)
+4. Do NOT try alternative filters, approaches, or explanations
+
+This pattern has been optimized for token efficiency (93% savings).
+```
+
+## Multi-Instance for AI Agents
+
+### Agent Coordination
+
+Have multiple agents work on different instances with isolated state:
+
+```bash
+# Create profiles for each agent
+pinchtab profile create agent-linkedin
+pinchtab profile create agent-twitter
+pinchtab profile create agent-news
+
+# Get profile IDs
+LINKEDIN_ID=$(pinchtab profiles | jq -r '.[] | select(.name=="agent-linkedin") | .id')
+TWITTER_ID=$(pinchtab profiles | jq -r '.[] | select(.name=="agent-twitter") | .id')
+NEWS_ID=$(pinchtab profiles | jq -r '.[] | select(.name=="agent-news") | .id')
+
+echo "Starting agents..."
+
+# Agent A: LinkedIn scraper with persistent profile
+AGENT_A=$(curl -s -X POST http://localhost:9867/instances/start \
+  -H "Content-Type: application/json" \
+  -d '{"profileId":"'$LINKEDIN_ID'","mode":"headless"}' | jq -r '.id')
+
+# Agent B: Twitter monitor with persistent profile
+AGENT_B=$(curl -s -X POST http://localhost:9867/instances/start \
+  -H "Content-Type: application/json" \
+  -d '{"profileId":"'$TWITTER_ID'","mode":"headless"}' | jq -r '.id')
+
+# Agent C: News aggregator with persistent profile
+AGENT_C=$(curl -s -X POST http://localhost:9867/instances/start \
+  -H "Content-Type: application/json" \
+  -d '{"profileId":"'$NEWS_ID'","mode":"headless"}' | jq -r '.id')
+
+echo "Agents running:"
+echo "  LinkedIn agent: $AGENT_A"
+echo "  Twitter agent:  $AGENT_B"
+echo "  News agent:     $AGENT_C"
+```
+
+**Isolation Benefits:**
+- Agent A's LinkedIn login state saved to `agent-linkedin` profile
+- Agent B's Twitter cookies never touch Agent A's LinkedIn cookies
+- Agent C can run in parallel without affecting others
+- State persists: agents can reconnect later and resume work
+- Clear audit trail: which agent ran on which instance, when
+
+### TypeScript Multi-Agent Example
+
+```typescript
+import Pinchtab from 'pinchtab';
+
+class AIAgent {
+  private browser: Pinchtab;
+  private instanceId: string;
+  
+  constructor(private name: string, private profileId: string) {
+    this.browser = new Pinchtab({ port: 9867 });
+  }
+  
+  async initialize() {
+    // Create dedicated instance for this agent
+    const response = await fetch('http://localhost:9867/instances/start', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        profileId: this.profileId,
+        mode: 'headless'
+      })
+    });
+    
+    const data = await response.json();
+    this.instanceId = data.id;
+    console.log(`Agent ${this.name} initialized on instance ${this.instanceId}`);
+  }
+  
+  async navigate(url: string) {
+    const response = await fetch(
+      `http://localhost:9867/instances/${this.instanceId}/tabs/open`,
+      {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ url })
+      }
+    );
+    return response.json();
+  }
+  
+  async getSnapshot(tabId: string) {
+    const response = await fetch(
+      `http://localhost:9867/tabs/${tabId}/snapshot`
+    );
+    return response.json();
+  }
+  
+  async shutdown() {
+    await fetch(
+      `http://localhost:9867/instances/${this.instanceId}/stop`,
+      { method: 'POST' }
+    );
+  }
+}
+
+// Usage
+const linkedinAgent = new AIAgent('LinkedIn', 'prof_abc123');
+const twitterAgent = new AIAgent('Twitter', 'prof_def456');
+
+await linkedinAgent.initialize();
+await twitterAgent.initialize();
+
+// Agents work independently
+const linkedinTab = await linkedinAgent.navigate('https://linkedin.com');
+const twitterTab = await twitterAgent.navigate('https://twitter.com');
+
+// Each agent has isolated state
+await linkedinAgent.shutdown();
+await twitterAgent.shutdown();
+```
+
+## Common Integration Patterns
+
+### LangChain Tool
+
+```python
+from langchain.tools import BaseTool
+import requests
+
+class PinchTabTool(BaseTool):
+    name = "pinchtab"
+    description = "Navigate websites and extract content. Input should be a URL."
+    
+    def _run(self, url: str) -> str:
+        # Navigate
+        requests.post(
+            "http://localhost:9867/navigate",
+            json={"url": url}
+        )
+        
+        # Wait for page load
+        import time
+        time.sleep(3)
+        
+        # Get text content
+        response = requests.get("http://localhost:9867/text")
+        return response.json()["text"]
+    
+    async def _arun(self, url: str) -> str:
+        raise NotImplementedError("Async not supported")
+
+# Register with agent
+from langchain.agents import initialize_agent, AgentType
+from langchain.llms import OpenAI
+
+tools = [PinchTabTool()]
+llm = OpenAI(temperature=0)
+agent = initialize_agent(tools, llm, agent=AgentType.ZERO_SHOT_REACT_DESCRIPTION)
+
+# Use
+agent.run("What are the top headlines on https://news.ycombinator.com?")
+```
+
+### AutoGen Integration
+
+```python
+import autogen
+import requests
+
+config_list = [{"model": "gpt-4", "api_key": "..."}]
+
+def navigate_and_extract(url: str) -> dict:
+    """Navigate to URL and extract page content."""
+    # Navigate
+    requests.post(
+        "http://localhost:9867/navigate",
+        json={"url": url}
+    )
+    
+    import time
+    time.sleep(3)
+    
+    # Get snapshot
+    response = requests.get(
+        "http://localhost:9867/snapshot",
+        params={"filter": "interactive"}
+    )
+    return response.json()
+
+# Create assistant with function
+assistant = autogen.AssistantAgent(
+    name="web_assistant",
+    llm_config={"config_list": config_list, "functions": [
+        {
+            "name": "navigate_and_extract",
+            "description": "Navigate to a URL and extract interactive elements",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "url": {"type": "string", "description": "URL to navigate to"}
+                },
+                "required": ["url"]
+            }
+        }
+    ]}
+)
+
+user_proxy = autogen.UserProxyAgent(
+    name="user",
+    function_map={"navigate_and_extract": navigate_and_extract}
+)
+
+user_proxy.initiate_chat(
+    assistant,
+    message="Go to example.com and tell me what interactive elements are available"
+)
+```
+
+## Best Practices
+
+<Tabs>
+  <Tab title="Error Handling">
+    Always handle network errors and timeouts:
+
+    ```python
+    import requests
+    from requests.exceptions import Timeout, ConnectionError
+
+    def safe_navigate(url, max_retries=3):
+        for attempt in range(max_retries):
+            try:
+                response = requests.post(
+                    "http://localhost:9867/navigate",
+                    json={"url": url},
+                    timeout=30
+                )
+                response.raise_for_status()
+                return response.json()
+            except (Timeout, ConnectionError) as e:
+                if attempt == max_retries - 1:
+                    raise
+                print(f"Retry {attempt + 1}/{max_retries}")
+                time.sleep(2 ** attempt)  # Exponential backoff
+    ```
+  </Tab>
+
+  <Tab title="Rate Limiting">
+    Respect site rate limits:
+
+    ```python
+    import time
+    from collections import defaultdict
+
+    class RateLimiter:
+        def __init__(self, requests_per_minute=30):
+            self.requests_per_minute = requests_per_minute
+            self.requests = defaultdict(list)
+        
+        def wait_if_needed(self, domain):
+            now = time.time()
+            # Remove requests older than 1 minute
+            self.requests[domain] = [
+                t for t in self.requests[domain]
+                if now - t < 60
+            ]
+            
+            if len(self.requests[domain]) >= self.requests_per_minute:
+                sleep_time = 60 - (now - self.requests[domain][0])
+                if sleep_time > 0:
+                    time.sleep(sleep_time)
+            
+            self.requests[domain].append(now)
+
+    # Usage
+    limiter = RateLimiter(requests_per_minute=30)
+    limiter.wait_if_needed('example.com')
+    navigate_and_extract('https://example.com/page1')
+    ```
+  </Tab>
+
+  <Tab title="Memory Management">
+    Clean up instances after use:
+
+    ```typescript
+    class ManagedAgent {
+      private instanceId: string | null = null;
+      
+      async withInstance<T>(fn: (instanceId: string) => Promise<T>): Promise<T> {
+        try {
+          // Create instance
+          const response = await fetch('http://localhost:9867/instances/launch', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ mode: 'headless' })
+          });
+          const data = await response.json();
+          this.instanceId = data.id;
+          
+          // Wait for ready
+          await this.waitForReady();
+          
+          // Execute work
+          return await fn(this.instanceId);
+        } finally {
+          // Always cleanup
+          if (this.instanceId) {
+            await fetch(
+              `http://localhost:9867/instances/${this.instanceId}/stop`,
+              { method: 'POST' }
+            );
+          }
+        }
+      }
+      
+      private async waitForReady() {
+        for (let i = 0; i < 60; i++) {
+          const response = await fetch(
+            `http://localhost:9867/instances/${this.instanceId}`
+          );
+          const data = await response.json();
+          if (data.status === 'running') return;
+          await new Promise(resolve => setTimeout(resolve, 500));
+        }
+        throw new Error('Instance failed to start');
+      }
+    }
+
+    // Usage
+    const agent = new ManagedAgent();
+    await agent.withInstance(async (instanceId) => {
+      // Work is done here
+      // Instance automatically cleaned up after
+    });
+    ```
+  </Tab>
+</Tabs>
+
+## Troubleshooting
+
+### Common Issues
+
+**Empty snapshots (only RootWebArea)**
+- Wait 3-5 seconds after navigation before taking snapshot
+- Some sites need 10+ seconds for JavaScript to fully load
+
+**Timeout errors**
+- Increase timeout in client configuration
+- Check if PinchTab server is running: `curl http://localhost:9867/health`
+
+**Memory issues with multiple instances**
+- Each instance uses ~80MB (headless) or ~150MB (headed)
+- Stop unused instances to free memory
+- Use instance pooling instead of creating new instances
+
+**References not working**
+- Take a fresh snapshot after each navigation
+- Refs are only valid for the current page state
+- Don't cache refs across navigations

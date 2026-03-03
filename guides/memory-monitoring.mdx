@@ -1,0 +1,471 @@
+---
+title: 'Memory Metrics & Monitoring'
+description: 'Monitor Chrome memory usage and performance metrics'
+---
+
+PinchTab monitors Chrome's memory usage at the OS level, providing accurate real-world memory consumption for each browser instance.
+
+## Enabling Memory Metrics
+
+Memory monitoring is **off by default** to minimize overhead.
+
+<Steps>
+  <Step title="Open Dashboard">
+    Navigate to `http://localhost:<port>/dashboard`
+  </Step>
+
+  <Step title="Go to Settings">
+    Click **Settings** → **📈 Monitoring**
+  </Step>
+
+  <Step title="Enable Metrics">
+    Toggle **Tab Memory Metrics** on (marked as experimental)
+  </Step>
+
+  <Step title="Apply Changes">
+    Click **Apply Settings** to save
+  </Step>
+</Steps>
+
+## How Memory is Calculated
+
+PinchTab uses a **process tree approach** to measure memory:
+
+<Steps>
+  <Step title="Identify Browser Process">
+    Gets the main Chrome PID from chromedp
+  </Step>
+
+  <Step title="Walk Process Tree">
+    Finds all child processes (renderers, GPU, utilities)
+  </Step>
+
+  <Step title="Sum RSS Memory">
+    Adds up Resident Set Size across all Chrome processes
+  </Step>
+
+  <Step title="Filter Renderers">
+    Counts processes with `--type=renderer` for tab count
+  </Step>
+</Steps>
+
+<Note>
+  This approach ensures memory is **isolated per instance** — you only see memory for that specific Chrome profile, not other Chrome windows on your system.
+</Note>
+
+## Memory Fields
+
+| Field | Description |
+|-------|-------------|
+| `memoryMB` | Real OS-level memory (RSS) across all Chrome processes |
+| `jsHeapUsedMB` | Estimated JS heap (~40% of memoryMB) |
+| `jsHeapTotalMB` | Estimated total heap (~50% of memoryMB) |
+| `renderers` | Number of renderer processes (≈ tabs) |
+
+<Warning>
+  JS heap values are estimates based on typical Chrome memory distribution. For exact JS heap metrics, use Chrome DevTools directly.
+</Warning>
+
+## API Endpoints
+
+### Per-Tab Metrics
+
+```bash
+GET /tabs/{tabId}/metrics
+```
+
+Returns memory metrics (aggregated, since we can't reliably map tabs to PIDs):
+
+```json
+{
+  "memoryMB": 850.5,
+  "jsHeapUsedMB": 340.2,
+  "jsHeapTotalMB": 425.25,
+  "renderers": 11,
+  "documents": 0,
+  "frames": 0,
+  "nodes": 0,
+  "listeners": 0
+}
+```
+
+<CodeGroup>
+```bash curl
+curl http://localhost:9867/tabs/tab_abc123/metrics | jq .
+```
+
+```python Python
+import requests
+
+response = requests.get('http://localhost:9867/tabs/tab_abc123/metrics')
+metrics = response.json()
+print(f"Memory: {metrics['memoryMB']:.1f} MB")
+print(f"Renderers: {metrics['renderers']}")
+```
+
+```typescript TypeScript
+const response = await fetch('http://localhost:9867/tabs/tab_abc123/metrics');
+const metrics = await response.json();
+console.log(`Memory: ${metrics.memoryMB.toFixed(1)} MB`);
+console.log(`Renderers: ${metrics.renderers}`);
+```
+</CodeGroup>
+
+### Instance Metrics
+
+```bash
+GET /metrics
+```
+
+Returns server metrics and browser memory:
+
+```json
+{
+  "metrics": {
+    "goHeapAllocMB": 12.5,
+    "goHeapSysMB": 24.0,
+    "goNumGoroutine": 15
+  },
+  "memory": {
+    "memoryMB": 850.5,
+    "jsHeapUsedMB": 340.2,
+    "jsHeapTotalMB": 425.25,
+    "renderers": 11
+  }
+}
+```
+
+<CodeGroup>
+```bash curl
+curl http://localhost:9868/metrics | jq .
+```
+
+```python Python
+import requests
+
+response = requests.get('http://localhost:9868/metrics')
+data = response.json()
+
+print(f"Go heap: {data['metrics']['goHeapAllocMB']:.1f} MB")
+print(f"Chrome memory: {data['memory']['memoryMB']:.1f} MB")
+print(f"Goroutines: {data['metrics']['goNumGoroutine']}")
+```
+
+```typescript TypeScript
+interface Metrics {
+  metrics: {
+    goHeapAllocMB: number;
+    goHeapSysMB: number;
+    goNumGoroutine: number;
+  };
+  memory: {
+    memoryMB: number;
+    jsHeapUsedMB: number;
+    jsHeapTotalMB: number;
+    renderers: number;
+  };
+}
+
+const response = await fetch('http://localhost:9868/metrics');
+const data: Metrics = await response.json();
+console.log(`Total memory: ${data.memory.memoryMB.toFixed(1)} MB`);
+```
+</CodeGroup>
+
+### All Instances (Orchestrator)
+
+```bash
+GET /instances/metrics
+```
+
+Returns memory metrics for all running instances:
+
+```json
+[
+  {
+    "instanceId": "inst_abc123",
+    "profileName": "MyProfile",
+    "jsHeapUsedMB": 340.2,
+    "jsHeapTotalMB": 425.25,
+    "documents": 0,
+    "frames": 0,
+    "nodes": 0,
+    "listeners": 0
+  }
+]
+```
+
+<CodeGroup>
+```bash curl
+curl http://localhost:9867/instances/metrics | jq .
+```
+
+```python Python
+import requests
+
+response = requests.get('http://localhost:9867/instances/metrics')
+instances = response.json()
+
+total_memory = sum(i['jsHeapUsedMB'] for i in instances)
+print(f"Total JS heap across {len(instances)} instances: {total_memory:.1f} MB")
+
+for inst in instances:
+    print(f"{inst['profileName']}: {inst['jsHeapUsedMB']:.1f} MB")
+```
+
+```typescript TypeScript
+interface InstanceMetrics {
+  instanceId: string;
+  profileName: string;
+  jsHeapUsedMB: number;
+  jsHeapTotalMB: number;
+  documents: number;
+  frames: number;
+  nodes: number;
+  listeners: number;
+}
+
+const response = await fetch('http://localhost:9867/instances/metrics');
+const instances: InstanceMetrics[] = await response.json();
+
+const totalMemory = instances.reduce(
+  (sum, inst) => sum + inst.jsHeapUsedMB,
+  0
+);
+
+console.log(`Total: ${totalMemory.toFixed(1)} MB across ${instances.length} instances`);
+```
+</CodeGroup>
+
+## Dashboard Visualization
+
+When enabled, the Monitoring page shows:
+
+- **Chart**: Solid lines for tab counts (left axis), dashed lines for memory in MB (right axis)
+- **Instance List**: Shows memory alongside tab count (e.g., `:9869 · 11 tabs · 1382MB`)
+- **Real-time updates**: Data polled every 30 seconds, chart retains ~30 minutes of history
+
+<Tip>
+  The dashboard provides a visual timeline of memory usage and tab counts across all instances.
+</Tip>
+
+## Performance Considerations
+
+- Memory metrics use [gopsutil](https://github.com/shirou/gopsutil) for OS-level process info
+- Minimal overhead: just reads `/proc` (Linux) or uses sysctl (macOS)
+- No CDP calls required — works reliably even with many tabs
+- 5-second grace period for new instances to stabilize before polling
+
+<Note>
+  Memory monitoring has negligible performance impact since it reads OS-level statistics rather than querying Chrome directly.
+</Note>
+
+## Monitoring Scripts
+
+### Basic Memory Monitor
+
+```bash
+#!/bin/bash
+
+while true; do
+  echo "=== $(date) ==="
+  
+  # Get metrics for all instances
+  METRICS=$(curl -s http://localhost:9867/instances/metrics)
+  
+  # Calculate totals
+  TOTAL_HEAP=$(echo "$METRICS" | jq '[.[].jsHeapUsedMB] | add')
+  INSTANCE_COUNT=$(echo "$METRICS" | jq 'length')
+  
+  echo "Instances: $INSTANCE_COUNT"
+  echo "Total JS Heap: ${TOTAL_HEAP} MB"
+  
+  # Per-instance breakdown
+  echo "$METRICS" | jq -r '.[] | "\(.profileName): \(.jsHeapUsedMB) MB"'
+  
+  sleep 30
+done
+```
+
+### Alert on High Memory
+
+```python
+import requests
+import time
+
+THRESHOLD_MB = 2000  # Alert if any instance exceeds 2GB
+
+while True:
+    try:
+        response = requests.get('http://localhost:9867/instances/metrics')
+        instances = response.json()
+        
+        for inst in instances:
+            memory = inst.get('jsHeapUsedMB', 0)
+            if memory > THRESHOLD_MB:
+                print(f"⚠️ HIGH MEMORY: {inst['profileName']} using {memory:.1f} MB")
+                print(f"   Instance ID: {inst['instanceId']}")
+        
+        total = sum(i.get('jsHeapUsedMB', 0) for i in instances)
+        print(f"Total: {total:.1f} MB across {len(instances)} instances")
+        
+    except Exception as e:
+        print(f"Error: {e}")
+    
+    time.sleep(30)
+```
+
+### Export Metrics to CSV
+
+```typescript
+import { writeFileSync } from 'fs';
+
+interface InstanceMetrics {
+  instanceId: string;
+  profileName: string;
+  jsHeapUsedMB: number;
+  jsHeapTotalMB: number;
+}
+
+async function exportMetrics() {
+  const response = await fetch('http://localhost:9867/instances/metrics');
+  const instances: InstanceMetrics[] = await response.json();
+  
+  const timestamp = new Date().toISOString();
+  const csv = [
+    'timestamp,instanceId,profileName,jsHeapUsedMB,jsHeapTotalMB',
+    ...instances.map(i => 
+      `${timestamp},${i.instanceId},${i.profileName},${i.jsHeapUsedMB},${i.jsHeapTotalMB}`
+    )
+  ].join('\n');
+  
+  const filename = `metrics-${Date.now()}.csv`;
+  writeFileSync(filename, csv);
+  console.log(`Exported to ${filename}`);
+}
+
+// Run every minute
+setInterval(exportMetrics, 60000);
+exportMetrics();
+```
+
+## Troubleshooting
+
+### Memory shows 0
+
+- Chrome may not have started yet (check instance status)
+- Browser context not initialized
+- Wait 5-10 seconds after instance creation
+
+```bash
+# Check instance status
+curl http://localhost:9867/instances | jq '.[] | {id, status}'
+
+# Wait for running status
+INST_ID="inst_abc123"
+while [ "$(curl -s http://localhost:9867/instances/$INST_ID | jq -r '.status')" != "running" ]; do
+  echo "Waiting for instance to start..."
+  sleep 1
+done
+```
+
+### Memory seems too high
+
+- Chrome is known to use significant memory
+- Each tab runs in a separate renderer process
+- Extensions and DevTools add to memory usage
+- Consider closing unused tabs or instances
+
+```bash
+# List tabs per instance
+curl http://localhost:9867/instances | jq '.[] | {id, profileName, port}' | while read -r line; do
+  INST_ID=$(echo $line | jq -r '.id')
+  TAB_COUNT=$(curl -s http://localhost:9867/instances/$INST_ID/tabs | jq 'length')
+  echo "$line has $TAB_COUNT tabs"
+done
+```
+
+### Memory doesn't match Activity Monitor/Task Manager
+
+- PinchTab shows RSS (Resident Set Size) for Chrome processes
+- System tools may show different metrics (virtual memory, shared memory)
+- Other Chrome windows are excluded — we only count this instance's process tree
+
+<Tip>
+  RSS (Resident Set Size) represents actual physical memory used, which is the most accurate metric for resource planning.
+</Tip>
+
+## Memory Management Best Practices
+
+<Tabs>
+  <Tab title="Instance Limits">
+    Set reasonable limits based on available RAM:
+
+    ```bash
+    # Estimate memory per instance type
+    HEADLESS_MB=80
+    HEADED_MB=150
+    AVAILABLE_RAM_MB=8192  # 8GB
+
+    # Calculate max instances
+    MAX_HEADLESS=$((AVAILABLE_RAM_MB / HEADLESS_MB))
+    MAX_HEADED=$((AVAILABLE_RAM_MB / HEADED_MB))
+
+    echo "Can run ~$MAX_HEADLESS headless or ~$MAX_HEADED headed instances"
+    ```
+  </Tab>
+
+  <Tab title="Cleanup Strategy">
+    Automatically stop instances exceeding memory limits:
+
+    ```python
+    import requests
+
+    MAX_MEMORY_MB = 1500
+
+    response = requests.get('http://localhost:9867/instances/metrics')
+    instances = response.json()
+
+    for inst in instances:
+        if inst.get('jsHeapUsedMB', 0) > MAX_MEMORY_MB:
+            print(f"Stopping {inst['profileName']} (memory: {inst['jsHeapUsedMB']:.1f} MB)")
+            requests.post(
+                f"http://localhost:9867/instances/{inst['instanceId']}/stop"
+            )
+    ```
+  </Tab>
+
+  <Tab title="Pooling">
+    Reuse instances instead of creating new ones:
+
+    ```typescript
+    class InstancePool {
+      private available: string[] = [];
+      
+      async acquire(): Promise<string> {
+        if (this.available.length > 0) {
+          return this.available.pop()!;
+        }
+        
+        // Create new instance
+        const response = await fetch('http://localhost:9867/instances/launch', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ mode: 'headless' })
+        });
+        const data = await response.json();
+        return data.id;
+      }
+      
+      release(instanceId: string) {
+        this.available.push(instanceId);
+      }
+    }
+
+    const pool = new InstancePool();
+    const id = await pool.acquire();
+    // ... use instance ...
+    pool.release(id);
+    ```
+  </Tab>
+</Tabs>

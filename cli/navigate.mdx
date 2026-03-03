@@ -1,0 +1,511 @@
+---
+title: 'Navigate Command'
+description: 'Navigate browser tabs to URLs'
+icon: 'compass'
+---
+
+# Navigate Command
+
+The `nav` (or `navigate`) command navigates the active tab to a URL.
+
+## Basic Usage
+
+```bash
+pinchtab nav <url>
+```
+
+Example:
+```bash
+pinchtab nav https://example.com
+```
+
+Output:
+```json
+{
+  "url": "https://example.com",
+  "title": "Example Domain",
+  "status": "complete",
+  "statusCode": 200,
+  "duration": 1234
+}
+```
+
+### Alias
+
+Both commands are identical:
+
+```bash
+pinchtab nav https://example.com
+pinchtab navigate https://example.com
+```
+
+## Navigation Flags
+
+<ParamField path="--new-tab" type="boolean">
+  Open URL in a new tab instead of navigating the active tab.
+  
+  ```bash
+  pinchtab nav https://example.com --new-tab
+  ```
+</ParamField>
+
+<ParamField path="--block-images" type="boolean">
+  Block image loading for faster navigation.
+  
+  ```bash
+  pinchtab nav https://example.com --block-images
+  ```
+  
+  This significantly reduces bandwidth and speeds up page load, especially useful for text-heavy pages.
+</ParamField>
+
+<ParamField path="--block-ads" type="boolean">
+  Block known ad domains.
+  
+  ```bash
+  pinchtab nav https://example.com --block-ads
+  ```
+  
+  Blocks requests to common advertising networks.
+</ParamField>
+
+### Combining Flags
+
+```bash
+# Fast navigation: new tab, no images, no ads
+pinchtab nav https://news.ycombinator.com --new-tab --block-images --block-ads
+```
+
+## Navigation Response
+
+Successful navigation returns:
+
+```json
+{
+  "url": "https://example.com",
+  "title": "Example Domain",
+  "status": "complete",
+  "statusCode": 200,
+  "duration": 1234,
+  "tabId": "tab_abc123"
+}
+```
+
+<ParamField path="url" type="string">
+  Final URL after redirects.
+</ParamField>
+
+<ParamField path="title" type="string">
+  Page title from `<title>` tag.
+</ParamField>
+
+<ParamField path="status" type="string">
+  Navigation status: `complete`, `loading`, or `error`.
+</ParamField>
+
+<ParamField path="statusCode" type="integer">
+  HTTP status code (200, 404, etc.).
+</ParamField>
+
+<ParamField path="duration" type="integer">
+  Navigation time in milliseconds.
+</ParamField>
+
+<ParamField path="tabId" type="string">
+  ID of the tab that was navigated.
+</ParamField>
+
+## URL Formats
+
+### Full URLs
+
+```bash
+pinchtab nav https://example.com
+pinchtab nav http://localhost:3000
+pinchtab nav https://github.com/pinchtab/pinchtab
+```
+
+### URL with Query Parameters
+
+```bash
+pinchtab nav "https://google.com/search?q=pinchtab"
+```
+
+<Note>
+Quote URLs with special characters to prevent shell interpretation.
+</Note>
+
+### URL with Hash/Fragment
+
+```bash
+pinchtab nav "https://example.com#section"
+```
+
+### Local Files
+
+```bash
+pinchtab nav "file:///Users/user/page.html"
+```
+
+### Special URLs
+
+```bash
+# Blank page
+pinchtab nav about:blank
+
+# Chrome version
+pinchtab nav chrome://version
+```
+
+## Navigation Workflow
+
+Typical workflow after navigation:
+
+```bash
+# 1. Navigate
+pinchtab nav https://github.com/pinchtab/pinchtab
+
+# 2. Wait for page load (navigation is blocking, so page is ready)
+
+# 3. Get page structure
+pinchtab snap -i -c
+
+# 4. Interact
+pinchtab click e5
+
+# 5. Check result
+pinchtab snap -d
+```
+
+## Next Steps After Navigation
+
+The CLI suggests common next actions:
+
+```bash
+pinchtab nav https://example.com
+```
+
+Output:
+```json
+{
+  "url": "https://example.com",
+  "title": "Example Domain",
+  "status": "complete"
+}
+
+💡 Next steps:
+  pinchtab snap              # See page structure
+  pinchtab screenshot         # Capture visual
+  pinchtab click <ref>        # Click an element
+  pinchtab pdf --tab <id> -o output.pdf  # Save tab as PDF
+```
+
+## Navigation Timeouts
+
+Default navigation timeout is 60 seconds (configurable via environment):
+
+```bash
+# Set custom timeout
+export BRIDGE_NAV_TIMEOUT=30
+pinchtab
+```
+
+Or in config file:
+
+```json ~/.pinchtab/config.json
+{
+  "navigateSec": 30
+}
+```
+
+If navigation exceeds timeout:
+
+```
+Error: navigation timeout after 60s
+exit: 3
+```
+
+## Tab-Specific Navigation
+
+Navigate a specific tab (instead of active tab):
+
+```bash
+pinchtab tab navigate <tab-id> <url> [flags]
+```
+
+Example:
+```bash
+TAB=$(pinchtab tab new | jq -r .tabId)
+pinchtab tab navigate $TAB https://example.com --block-images
+```
+
+See [Tab Commands](/cli/tab) for more details.
+
+## HTTP Response Codes
+
+### Successful Navigation
+
+```bash
+pinchtab nav https://example.com
+# Returns: statusCode: 200
+```
+
+### Redirects
+
+```bash
+pinchtab nav http://example.com
+# Redirects to https://example.com
+# Returns final URL: https://example.com
+```
+
+### 404 Not Found
+
+```bash
+pinchtab nav https://example.com/nonexistent
+```
+
+```json
+{
+  "url": "https://example.com/nonexistent",
+  "title": "404 Not Found",
+  "status": "complete",
+  "statusCode": 404
+}
+```
+
+### Network Errors
+
+```bash
+pinchtab nav https://invalid-domain-xyz.com
+```
+
+```json
+{
+  "status": "error",
+  "error": "net::ERR_NAME_NOT_RESOLVED"
+}
+```
+
+## Navigation with Resource Blocking
+
+### Block Images
+
+Reduces bandwidth by ~60-80% on image-heavy sites:
+
+```bash
+pinchtab nav https://news.ycombinator.com --block-images
+```
+
+### Block Ads
+
+Blocks requests to common ad networks:
+
+```bash
+pinchtab nav https://example.com --block-ads
+```
+
+### Block Media (Global Setting)
+
+Set globally before starting server:
+
+```bash
+export BRIDGE_BLOCK_MEDIA=true
+pinchtab
+```
+
+Blocks video and audio loading.
+
+### Combine Blocking
+
+```bash
+export BRIDGE_BLOCK_IMAGES=true
+export BRIDGE_BLOCK_MEDIA=true
+export BRIDGE_BLOCK_ADS=true
+pinchtab
+```
+
+Or per-navigation:
+
+```bash
+pinchtab nav https://example.com --block-images --block-ads
+```
+
+## Quick Command
+
+The `quick` command combines navigation and snapshot:
+
+```bash
+pinchtab quick <url>
+```
+
+Example:
+```bash
+pinchtab quick https://github.com/pinchtab/pinchtab
+```
+
+This:
+1. Navigates to the URL
+2. Waits for page to stabilize
+3. Captures interactive elements
+4. Shows suggested next actions
+
+Output:
+```
+🦀 Navigating to https://github.com/pinchtab/pinchtab ...
+
+📋 Page structure:
+{
+  "elements": [
+    {"ref": "e1", "role": "link", "name": "Code"},
+    {"ref": "e2", "role": "link", "name": "Issues"},
+    {"ref": "e3", "role": "button", "name": "Star"}
+  ]
+}
+
+📌 Title: GitHub - pinchtab/pinchtab
+🔗 URL: https://github.com/pinchtab/pinchtab
+
+💡 Quick actions:
+  pinchtab click <ref>        # Click an element (use refs from above)
+  pinchtab type <ref> <text>  # Type into input field
+  pinchtab screenshot         # Take a screenshot
+  pinchtab pdf --tab <id> -o output.pdf  # Save tab as PDF
+```
+
+## Common Issues
+
+### Server Not Running
+
+```
+❌ Pinchtab server is not running on http://127.0.0.1:9867
+
+To start the server:
+  pinchtab                    # Run in foreground
+  pinchtab &                  # Run in background
+```
+
+Solution:
+
+```bash
+# Terminal 1: Start server
+pinchtab
+
+# Terminal 2: Use CLI
+pinchtab nav https://example.com
+```
+
+### Navigation Timeout
+
+```
+Error: navigation timeout after 60s
+```
+
+Solution:
+
+```bash
+# Increase timeout
+export BRIDGE_NAV_TIMEOUT=120
+pinchtab
+
+# Or navigate to a faster-loading page
+pinchtab nav https://example.com --block-images --block-ads
+```
+
+### SSL Certificate Errors
+
+```
+net::ERR_CERT_AUTHORITY_INVALID
+```
+
+For development/testing only:
+
+```bash
+export CHROME_FLAGS="--ignore-certificate-errors"
+pinchtab
+```
+
+<Warning>
+Never use `--ignore-certificate-errors` in production.
+</Warning>
+
+## Examples
+
+### Navigate and Extract Data
+
+```bash
+# Navigate
+pinchtab nav https://news.ycombinator.com
+
+# Get all links
+pinchtab snap -i | jq -r '.elements[] | select(.role=="link") | .name'
+
+# Click top story
+pinchtab click e1
+
+# Get page text
+pinchtab text --raw
+```
+
+### Multi-Step Navigation
+
+```bash
+# Start at homepage
+pinchtab nav https://example.com
+
+# Find search box
+pinchtab snap -i | jq '.elements[] | select(.role=="textbox")'
+
+# Type search query
+pinchtab type e5 "search term"
+
+# Submit
+pinchtab press Enter
+
+# Wait and capture results
+sleep 2
+pinchtab snap -i
+```
+
+### Batch Navigation
+
+```bash
+# List of URLs
+URLS=(
+  "https://example.com"
+  "https://github.com"
+  "https://news.ycombinator.com"
+)
+
+# Navigate and screenshot each
+for URL in "${URLS[@]}"; do
+  NAME=$(echo $URL | sed 's|https://||' | sed 's|/||g')
+  
+  pinchtab nav $URL --new-tab
+  sleep 2
+  
+  TAB=$(pinchtab tabs | jq -r '.tabs[-1].id')
+  pinchtab tab screenshot $TAB -o "${NAME}.png"
+  
+  echo "Captured: ${NAME}.png"
+done
+```
+
+## Next Steps
+
+<CardGroup cols={2}>
+  <Card title="Snapshot" icon="camera" href="/cli/snapshot">
+    Capture page structure after navigation
+  </Card>
+  
+  <Card title="Actions" icon="hand-pointer" href="/cli/action">
+    Interact with page elements
+  </Card>
+  
+  <Card title="Tab Management" icon="window-restore" href="/cli/tab">
+    Manage multiple tabs
+  </Card>
+  
+  <Card title="Screenshots" icon="image" href="/cli/screenshot">
+    Capture visual screenshots
+  </Card>
+</CardGroup>

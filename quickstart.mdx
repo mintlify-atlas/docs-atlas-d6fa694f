@@ -1,80 +1,646 @@
 ---
-title: "Quickstart"
-description: "Start building awesome documentation in minutes"
+title: Quick Start
+description: Get PinchTab running in 5 minutes, from zero to browser automation
 ---
 
-## Get started in three steps
+## Installation
 
-Get your documentation site running locally and make your first customization.
+Choose your preferred installation method:
 
-### Step 1: Set up your local environment
+<Tabs>
+  <Tab title="One-Liner (Recommended)">
+    **macOS / Linux:**
+    ```bash
+    curl -fsSL https://pinchtab.com/install.sh | bash
+    ```
+    
+    Verify the installation:
+    ```bash
+    pinchtab --version
+    ```
+  </Tab>
+  
+  <Tab title="npm">
+    **Requires:** Node.js 18+
+    
+    ```bash
+    npm install -g pinchtab
+    pinchtab --version
+    ```
+    
+    <Accordion title="Troubleshooting npm">
+      If you see "command not found", add npm to your PATH:
+      
+      ```bash
+      # Add npm binaries to PATH
+      export PATH="$(npm config get prefix)/bin:$PATH"
+      
+      # Add to ~/.bashrc or ~/.zshrc to persist
+      echo 'export PATH="$(npm config get prefix)/bin:$PATH"' >> ~/.bashrc
+      ```
+    </Accordion>
+  </Tab>
+  
+  <Tab title="Docker">
+    **Requires:** Docker
+    
+    ```bash
+    docker run -d -p 9867:9867 pinchtab/pinchtab
+    
+    # Verify it's running
+    curl http://localhost:9867/health
+    ```
+  </Tab>
+  
+  <Tab title="Build from Source">
+    **Requires:** Go 1.25+, Git, Chrome/Chromium
+    
+    ```bash
+    git clone https://github.com/pinchtab/pinchtab.git
+    cd pinchtab
+    go build -o pinchtab ./cmd/pinchtab
+    ./pinchtab --version
+    ```
+    
+    See [Building from Source](/architecture/building) for full build guide.
+  </Tab>
+</Tabs>
+
+## 5-Minute Quick Start
+
+<Steps>
+  <Step title="Start the Orchestrator">
+    Open your first terminal and start the PinchTab orchestrator:
+    
+    ```bash
+    pinchtab
+    ```
+    
+    **Expected output:**
+    ```
+    🦀 Pinchtab Dashboard port=9867
+    dashboard ready url=http://localhost:9867/dashboard
+    ```
+    
+    <Note>
+    The orchestrator runs on `http://127.0.0.1:9867` and manages all instances, profiles, and tabs.
+    Open the dashboard in your browser to see real-time status.
+    </Note>
+  </Step>
+
+  <Step title="Create an Instance">
+    Open a second terminal and create a headless Chrome instance:
+    
+    ```bash
+    # Create headless instance (background Chrome)
+    INST=$(pinchtab instance launch --mode headless | jq -r '.id')
+    echo "Instance created: $INST"
+    
+    # Wait for Chrome to initialize (~2-5 seconds)
+    sleep 3
+    ```
+    
+    <Tip>
+    Instances are auto-allocated unique ports (9868-9968). Chrome initializes lazily on first request.
+    </Tip>
+  </Step>
+
+  <Step title="Navigate to a Website">
+    Create a tab and navigate to a website:
+    
+    ```bash
+    # Create tab and navigate
+    TAB_ID=$(curl -s -X POST http://localhost:9867/instances/$INST/tabs/open \
+      -H "Content-Type: application/json" \
+      -d '{"url":"https://example.com"}' | jq -r '.id')
+    
+    echo "Tab created: $TAB_ID"
+    ```
+  </Step>
+
+  <Step title="Extract Page Content">
+    Get the page structure and text content:
+    
+    ```bash
+    # Get page structure with interactive elements
+    curl http://localhost:9867/tabs/$TAB_ID/snapshot | jq '.nodes | map({ref, role, name}) | .[0:5]'
+    
+    # Extract text content
+    curl http://localhost:9867/tabs/$TAB_ID/text | jq '.text'
+    ```
+    
+    <CodeGroup>
+    ```json Example Snapshot Response
+    [
+      {"ref": "e0", "role": "link", "name": "More information..."},
+      {"ref": "e1", "role": "heading", "name": "Example Domain"},
+      {"ref": "e2", "role": "paragraph", "name": "This domain is for use..."},
+      {"ref": "e3", "role": "button", "name": "Accept"}
+    ]
+    ```
+    
+    ```json Example Text Response
+    {
+      "text": "Example Domain\n\nThis domain is for use in illustrative examples...",
+      "length": 156
+    }
+    ```
+    </CodeGroup>
+  </Step>
+</Steps>
+
+✅ **You're running PinchTab!** Continue below for common workflows.
+
+## Common First Commands
+
+### Take a Screenshot
+
+```bash
+# Save screenshot for a specific tab
+curl "http://localhost:9867/tabs/$TAB_ID/screenshot" -o page.png
+
+# View the screenshot
+open page.png  # macOS
+xdg-open page.png  # Linux
+```
+
+### Export as PDF
+
+```bash
+# Save PDF
+curl "http://localhost:9867/tabs/$TAB_ID/pdf?landscape=true" -o output.pdf
+
+# View the PDF
+open output.pdf  # macOS
+```
+
+### Interact with the Page
+
+```bash
+# Get page structure (snapshot)
+SNAPSHOT=$(curl http://localhost:9867/tabs/$TAB_ID/snapshot)
+
+# Extract a reference (e.g., first button)
+BUTTON_REF=$(echo "$SNAPSHOT" | jq -r '.nodes[] | select(.role=="button") | .ref' | head -1)
+
+# Click the button
+curl -X POST http://localhost:9867/tabs/$TAB_ID/action \
+  -H "Content-Type: application/json" \
+  -d '{"kind":"click","ref":"'$BUTTON_REF'"}'
+
+# Fill a form input
+curl -X POST http://localhost:9867/tabs/$TAB_ID/action \
+  -H "Content-Type: application/json" \
+  -d '{"kind":"fill","ref":"e3","text":"user@example.com"}'
+```
+
+### Open Multiple Tabs
+
+```bash
+# Create new tab in same instance
+curl -X POST http://localhost:9867/instances/$INST/tabs/open \
+  -H "Content-Type: application/json" \
+  -d '{"url":"https://github.com"}'
+
+# List all tabs in instance
+curl http://localhost:9867/instances/$INST/tabs | jq .
+
+# Get specific tab info
+curl http://localhost:9867/tabs/$TAB_ID | jq .
+```
+
+## Understanding the Workflow
+
+Here's a typical automation workflow with PinchTab:
+
+<Steps>
+  <Step title="Create Instance">
+    Chrome starts lazily on first request
+    
+    ```bash
+    INST=$(pinchtab instance launch | jq -r '.id')
+    sleep 2
+    ```
+  </Step>
+
+  <Step title="Navigate">
+    Create tab and navigate to page
+    
+    ```bash
+    TAB_ID=$(curl -s -X POST http://localhost:9867/instances/$INST/tabs/open \
+      -d '{"url":"https://example.com"}' | jq -r '.id')
+    ```
+  </Step>
+
+  <Step title="Get Structure">
+    See buttons, links, inputs with stable refs
+    
+    ```bash
+    curl http://localhost:9867/tabs/$TAB_ID/snapshot
+    ```
+  </Step>
+
+  <Step title="Interact">
+    Click, type, fill using element refs
+    
+    ```bash
+    curl -X POST http://localhost:9867/tabs/$TAB_ID/action \
+      -d '{"kind":"click","ref":"e5"}'
+    ```
+  </Step>
+
+  <Step title="Verify">
+    Check page changes
+    
+    ```bash
+    curl http://localhost:9867/tabs/$TAB_ID/snapshot
+    ```
+  </Step>
+
+  <Step title="Capture Result">
+    Take screenshot or export PDF
+    
+    ```bash
+    curl "http://localhost:9867/tabs/$TAB_ID/screenshot" -o page.png
+    curl "http://localhost:9867/tabs/$TAB_ID/pdf" -o report.pdf
+    ```
+  </Step>
+
+  <Step title="Clean Up">
+    Stop instance when done
+    
+    ```bash
+    curl -X POST http://localhost:9867/instances/$INST/stop
+    ```
+  </Step>
+</Steps>
+
+## Using with Different Languages
+
+<Tabs>
+  <Tab title="curl (HTTP API)">
+    PinchTab is HTTP-first, so you can use pure curl:
+    
+    ```bash
+    # Health check
+    curl http://localhost:9867/health
+    
+    # Create instance
+    INST=$(curl -s -X POST http://localhost:9867/instances/launch | jq -r '.id')
+    sleep 2
+    
+    # Navigate
+    curl -X POST http://localhost:9867/instances/$INST/tabs/open \
+      -H "Content-Type: application/json" \
+      -d '{"url":"https://example.com"}'
+    
+    # Get snapshot
+    curl http://localhost:9867/tabs/$TAB_ID/snapshot
+    
+    # Extract text
+    curl http://localhost:9867/tabs/$TAB_ID/text
+    
+    # Stop instance
+    curl -X POST http://localhost:9867/instances/$INST/stop
+    ```
+  </Tab>
+  
+  <Tab title="Python">
+    ```python
+    import requests
+    import time
+    
+    BASE = "http://localhost:9867"
+    
+    # 1. Create instance
+    resp = requests.post(f"{BASE}/instances/launch", json={"mode": "headless"})
+    inst_id = resp.json()["id"]
+    print(f"Created instance: {inst_id}")
+    
+    # Wait for Chrome to initialize
+    time.sleep(2)
+    
+    # 2. Create tab by navigating
+    resp = requests.post(f"{BASE}/instances/{inst_id}/tabs/open", json={
+        "url": "https://example.com"
+    })
+    tab_id = resp.json()["id"]
+    print(f"Navigated: {resp.json()}")
+    
+    # 3. Get snapshot
+    snapshot = requests.get(f"{BASE}/tabs/{tab_id}/snapshot").json()
+    
+    # Print interactive elements
+    for elem in snapshot.get("nodes", []):
+        if elem.get("role") in ["button", "link"]:
+            print(f"{elem['ref']}: {elem['role']} - {elem['name']}")
+    
+    # 4. Click an element
+    requests.post(f"{BASE}/tabs/{tab_id}/action", json={
+        "kind": "click",
+        "ref": "e5"
+    })
+    
+    # 5. Get text
+    text = requests.get(f"{BASE}/tabs/{tab_id}/text").json()
+    print(f"Page text: {text['text'][:200]}...")
+    
+    # 6. Stop instance
+    requests.post(f"{BASE}/instances/{inst_id}/stop")
+    print(f"Stopped instance: {inst_id}")
+    ```
+  </Tab>
+  
+  <Tab title="Node.js">
+    ```javascript
+    const fetch = require('node-fetch');
+    
+    const BASE = "http://localhost:9867";
+    
+    async function main() {
+      try {
+        // 1. Create instance
+        const launchResp = await fetch(`${BASE}/instances/launch`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ mode: "headless" })
+        });
+        const launch = await launchResp.json();
+        const instId = launch.id;
+        console.log(`Created instance: ${instId}`);
+    
+        // Wait for Chrome to initialize
+        await new Promise(r => setTimeout(r, 2000));
+    
+        // 2. Create tab by navigating
+        const navResp = await fetch(`${BASE}/instances/${instId}/tabs/open`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            url: "https://example.com"
+          })
+        });
+        const navData = await navResp.json();
+        const tabId = navData.id;
+    
+        // 3. Get snapshot
+        const snapResp = await fetch(`${BASE}/tabs/${tabId}/snapshot`);
+        const snap = await snapResp.json();
+    
+        // Print interactive elements
+        snap.nodes
+          .filter(n => ["button", "link"].includes(n.role))
+          .forEach(n => console.log(`${n.ref}: ${n.role} - ${n.name}`));
+    
+        // 4. Click element
+        await fetch(`${BASE}/tabs/${tabId}/action`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            kind: "click",
+            ref: "e5"
+          })
+        });
+    
+        // 5. Get text
+        const textResp = await fetch(`${BASE}/tabs/${tabId}/text`);
+        const text = await textResp.json();
+        console.log(`Page text: ${text.text.substring(0, 200)}...`);
+    
+        // 6. Stop instance
+        await fetch(`${BASE}/instances/${instId}/stop`, {
+          method: "POST"
+        });
+        console.log(`Stopped instance: ${instId}`);
+    
+      } catch (error) {
+        console.error("Error:", error);
+      }
+    }
+    
+    main();
+    ```
+  </Tab>
+</Tabs>
+
+## Common Scenarios
 
 <AccordionGroup>
-  <Accordion icon="copy" title="Clone your docs locally">
-    During the onboarding process, you created a GitHub repository with your docs content if you didn't already have one. You can find a link to this repository in your [dashboard](https://dashboard.mintlify.com).
+  <Accordion title="Scrape a Website">
+    ```bash
+    # Create instance
+    INST=$(pinchtab instance launch | jq -r '.id')
+    sleep 2
     
-    To clone the repository locally so that you can make and preview changes to your docs, follow the [Cloning a repository](https://docs.github.com/en/repositories/creating-and-managing-repositories/cloning-a-repository) guide in the GitHub docs.
+    # Navigate
+    TAB_ID=$(curl -s -X POST http://localhost:9867/instances/$INST/tabs/open \
+      -d '{"url":"https://example.com/article"}' | jq -r '.id')
+    
+    # Extract text
+    curl http://localhost:9867/tabs/$TAB_ID/text | jq '.text'
+    
+    # Save to file
+    curl http://localhost:9867/tabs/$TAB_ID/text | jq -r '.text' > article.txt
+    
+    # Stop instance
+    curl -X POST http://localhost:9867/instances/$INST/stop
+    ```
   </Accordion>
-  <Accordion icon="rectangle-terminal" title="Start the preview server">
-    1. Install the Mintlify CLI: `npm i -g mint`
-    2. Navigate to your docs directory and run: `mint dev`
-    3. Open `http://localhost:3000` to see your docs live!
+
+  <Accordion title="Fill and Submit a Form">
+    ```bash
+    # Create instance
+    INST=$(pinchtab instance launch | jq -r '.id')
+    sleep 2
     
-    <Tip>Your preview updates automatically as you edit files.</Tip>
+    # Navigate to form
+    TAB_ID=$(curl -s -X POST http://localhost:9867/instances/$INST/tabs/open \
+      -d '{"url":"https://example.com/contact"}' | jq -r '.id')
+    
+    # Get form structure
+    SNAP=$(curl http://localhost:9867/tabs/$TAB_ID/snapshot)
+    
+    # Fill fields (get refs from snapshot)
+    curl -X POST http://localhost:9867/tabs/$TAB_ID/action \
+      -d '{"kind":"fill","ref":"e3","text":"John Doe"}'
+    
+    curl -X POST http://localhost:9867/tabs/$TAB_ID/action \
+      -d '{"kind":"fill","ref":"e5","text":"john@example.com"}'
+    
+    curl -X POST http://localhost:9867/tabs/$TAB_ID/action \
+      -d '{"kind":"fill","ref":"e7","text":"My message here"}'
+    
+    # Click submit
+    curl -X POST http://localhost:9867/tabs/$TAB_ID/action \
+      -d '{"kind":"click","ref":"e10"}'
+    
+    # Verify success
+    curl http://localhost:9867/tabs/$TAB_ID/snapshot | jq '.nodes | length'
+    ```
+  </Accordion>
+
+  <Accordion title="Login + Stay Logged In">
+    ```bash
+    # Create persistent profile
+    pinchtab profile create mylogin
+    PROF_ID=$(pinchtab profiles | jq -r '.[] | select(.name=="mylogin") | .id')
+    
+    # Start instance with profile
+    INST=$(curl -s -X POST http://localhost:9867/instances/start \
+      -d '{"profileId":"'$PROF_ID'"}' | jq -r '.id')
+    sleep 2
+    
+    # Login
+    TAB_ID=$(curl -s -X POST http://localhost:9867/instances/$INST/tabs/open \
+      -d '{"url":"https://example.com/login"}' | jq -r '.id')
+    
+    curl -X POST http://localhost:9867/tabs/$TAB_ID/action \
+      -d '{"kind":"fill","ref":"e3","text":"user@example.com"}'
+    
+    curl -X POST http://localhost:9867/tabs/$TAB_ID/action \
+      -d '{"kind":"fill","ref":"e5","text":"password"}'
+    
+    curl -X POST http://localhost:9867/tabs/$TAB_ID/action \
+      -d '{"kind":"click","ref":"e7"}'
+    
+    # Stop instance (profile saved)
+    curl -X POST http://localhost:9867/instances/$INST/stop
+    
+    # Later: restart with same profile (already logged in!)
+    INST=$(curl -s -X POST http://localhost:9867/instances/start \
+      -d '{"profileId":"'$PROF_ID'"}' | jq -r '.id')
+    sleep 2
+    
+    # Navigate to dashboard (cookies preserved)
+    curl -X POST http://localhost:9867/instances/$INST/tabs/open \
+      -d '{"url":"https://example.com/dashboard"}'
+    ```
+  </Accordion>
+
+  <Accordion title="Generate PDF Report">
+    ```bash
+    # Create instance
+    INST=$(pinchtab instance launch | jq -r '.id')
+    sleep 2
+    
+    TAB_ID=$(curl -s -X POST http://localhost:9867/instances/$INST/tabs/open \
+      -d '{"url":"https://reports.example.com/monthly"}' | jq -r '.id')
+    
+    # Export PDF
+    curl "http://localhost:9867/tabs/$TAB_ID/pdf?landscape=true" -o report.pdf
+    ```
   </Accordion>
 </AccordionGroup>
 
-### Step 2: Deploy your changes
+## Troubleshooting
 
 <AccordionGroup>
-  <Accordion icon="github" title="Install our GitHub app">
-    Install the Mintlify GitHub app from your [dashboard](https://dashboard.mintlify.com/settings/organization/github-app).
+  <Accordion title="Connection Refused">
+    **Problem:** Orchestrator not running
     
-    Our GitHub app automatically deploys your changes to your docs site, so you don't need to manage deployments yourself.
-</Accordion>
-<Accordion icon="palette" title="Update your site name and colors">
-    For a first change, let's update the name and colors of your docs site.
+    **Solution:**
+    ```bash
+    # Terminal 1: Start orchestrator
+    pinchtab
+    
+    # Terminal 2: Check health (once running)
+    curl http://localhost:9867/health
+    ```
+  </Accordion>
 
-    1. Open `docs.json` in your editor.
-    2. Change the `"name"` field to your project name.
-    3. Update the `"colors"` to match your brand.
-    4. Save and see your changes instantly at `http://localhost:3000`.
+  <Accordion title="Instance Stuck in 'starting' State">
+    **Problem:** Chrome takes time to initialize (8-20 seconds)
+    
+    **Solution:**
+    ```bash
+    # Poll instance status
+    INST=$(pinchtab instance launch | jq -r '.id')
+    
+    # Wait until 'running'
+    while [ "$(curl -s http://localhost:9867/instances/$INST | jq -r '.status')" != "running" ]; do
+      sleep 0.5
+    done
+    
+    # Now safe to use
+    curl -X POST http://localhost:9867/instances/$INST/tabs/open \
+      -d '{"url":"https://example.com"}'
+    ```
+  </Accordion>
 
-    <Tip>Try changing the primary color to see an immediate difference!</Tip>
+  <Accordion title="Port Already in Use">
+    **Problem:** Port 9867 (or instance port) is taken
+    
+    **Solution:**
+    ```bash
+    # Use different orchestrator port
+    BRIDGE_PORT=9868 pinchtab
+    
+    # Or kill the process using 9867
+    lsof -i :9867
+    kill -9 <PID>
+    
+    # Instance ports auto-allocated from 9868-9968, no manual config needed
+    ```
+  </Accordion>
+
+  <Accordion title="Chrome Not Found">
+    **Problem:** Chrome/Chromium not installed
+    
+    **Solution:**
+    ```bash
+    # macOS
+    brew install chromium
+    
+    # Linux (Ubuntu/Debian)
+    sudo apt install chromium-browser
+    
+    # Or specify custom Chrome
+    CHROME_BIN=/path/to/chrome pinchtab
+    ```
   </Accordion>
 </AccordionGroup>
 
-### Step 3: Go live
+## Quick Reference
 
-<Accordion icon="rocket" title="Publish your docs">
-  1. Commit and push your changes.
-  2. Your docs will update and be live in moments!
-</Accordion>
+| Task | Command |
+|------|------|
+| Start orchestrator | `pinchtab` |
+| Health check | `curl http://localhost:9867/health` |
+| Create instance | `INST=$(pinchtab instance launch \| jq -r '.id')` |
+| Navigate | `curl -X POST http://localhost:9867/instances/$INST/tabs/open -d '{"url":"..."}' ` |
+| See structure | `curl http://localhost:9867/tabs/$TAB_ID/snapshot` |
+| Get text | `curl http://localhost:9867/tabs/$TAB_ID/text` |
+| Click element | `curl -X POST http://localhost:9867/tabs/$TAB_ID/action -d '{"kind":"click","ref":"e5"}'` |
+| Type text | `curl -X POST http://localhost:9867/tabs/$TAB_ID/action -d '{"kind":"type","ref":"e3","text":"hello"}'` |
+| Screenshot | `curl "http://localhost:9867/tabs/$TAB_ID/screenshot" -o page.png` |
+| PDF export | `curl http://localhost:9867/tabs/$TAB_ID/pdf -o out.pdf` |
+| List instances | `curl http://localhost:9867/instances` |
+| Stop instance | `curl -X POST http://localhost:9867/instances/$INST/stop` |
 
-## Next steps
-
-Now that you have your docs running, explore these key features:
+## Next Steps
 
 <CardGroup cols={2}>
-
-<Card title="Write Content" icon="pen-to-square" href="/essentials/markdown">
-  Learn MDX syntax and start writing your documentation.
-</Card>
-
-<Card title="Customize style" icon="palette" href="/essentials/settings">
-  Make your docs match your brand perfectly.
-</Card>
-
-<Card title="Add code examples" icon="square-code" href="/essentials/code">
-  Include syntax-highlighted code blocks.
-</Card>
-
-<Card title="API documentation" icon="code" href="/api-reference/introduction">
-  Auto-generate API docs from OpenAPI specs.
-</Card>
-
+  <Card title="Core Concepts" icon="book" href="/core-concepts">
+    Understand orchestrator, instances, profiles, and tabs
+  </Card>
+  
+  <Card title="API Reference" icon="code" href="/api-reference/instances">
+    Complete HTTP API documentation
+  </Card>
+  
+  <Card title="Configuration" icon="gear" href="/configuration">
+    Environment variables and advanced settings
+  </Card>
+  
+  <Card title="Examples" icon="lightbulb" href="/examples/scraping">
+    Real-world automation examples
+  </Card>
 </CardGroup>
 
-<Note>
-  **Need help?** See our [full documentation](https://mintlify.com/docs) or join our [community](https://mintlify.com/community).
-</Note>
+## Getting Help
+
+- **Issues** → [GitHub Issues](https://github.com/pinchtab/pinchtab/issues)
+- **Q&A** → [GitHub Discussions](https://github.com/pinchtab/pinchtab/discussions)
+- **Docs** → [Full documentation](/introduction)
+
+**Happy automating!** 🦀

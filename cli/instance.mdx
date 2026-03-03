@@ -1,0 +1,444 @@
+---
+title: 'Instance Commands'
+description: 'Launch and manage browser instances'
+icon: 'layer-group'
+---
+
+# Instance Management
+
+PinchTab instances are isolated browser processes with their own Chrome instance, port, and state. The orchestrator manages multiple instances simultaneously.
+
+## List Instances
+
+```bash
+pinchtab instances
+```
+
+Output:
+```json
+[
+  {
+    "id": "inst_abc123",
+    "port": "9868",
+    "mode": "headed",
+    "status": "running"
+  },
+  {
+    "id": "inst_xyz789",
+    "port": "9869",
+    "mode": "headless",
+    "status": "running"
+  }
+]
+```
+
+### Filter Instances
+
+```bash
+# Get all instance IDs
+pinchtab instances | jq -r '.[] | .id'
+
+# Count running instances
+pinchtab instances | jq 'length'
+
+# Find headed instances
+pinchtab instances | jq '.[] | select(.mode == "headed")'
+
+# Get instance by port
+pinchtab instances | jq '.[] | select(.port == "9868")'
+```
+
+## Launch Instance
+
+```bash
+pinchtab instance launch
+```
+
+Output:
+```json
+{
+  "id": "inst_abc123",
+  "port": "9868",
+  "url": "http://localhost:9868",
+  "status": "running",
+  "headless": true
+}
+```
+
+### Launch with Options
+
+<ParamField path="--mode" type="string" default="headless">
+  Instance mode: `headed` (visible window) or `headless` (no UI).
+  
+  ```bash
+  pinchtab instance launch --mode headed
+  ```
+</ParamField>
+
+<ParamField path="--port" type="string">
+  Specific port for the instance. If omitted, uses next available port from the range.
+  
+  ```bash
+  pinchtab instance launch --port 9999
+  ```
+</ParamField>
+
+<ParamField path="--profileId" type="string">
+  Profile to use for this instance.
+  
+  ```bash
+  pinchtab instance launch --profileId my-profile
+  ```
+</ParamField>
+
+Examples:
+
+```bash
+# Headed instance on port 9868
+pinchtab instance launch --mode headed --port 9868
+
+# Headless instance with specific profile
+pinchtab instance launch --profileId automation-bot
+
+# Capture instance ID
+INST=$(pinchtab instance launch --mode headed | jq -r .id)
+echo "Instance ID: $INST"
+```
+
+## Launch Alias
+
+`instance start` is an alias for `instance launch`:
+
+```bash
+pinchtab instance start --mode headed
+```
+
+## Instance Logs
+
+View instance logs for debugging:
+
+```bash
+pinchtab instance logs <instance-id>
+```
+
+Example:
+```bash
+pinchtab instance logs inst_abc123
+```
+
+Output:
+```
+2024-03-15T10:30:00Z [INFO] Chrome launched
+2024-03-15T10:30:01Z [INFO] Bridge server started on :9868
+2024-03-15T10:30:05Z [INFO] Navigation to https://example.com
+2024-03-15T10:30:06Z [INFO] Page loaded (1.2s)
+```
+
+### Alternative Syntax
+
+```bash
+pinchtab instance logs --id inst_abc123
+```
+
+### View Recent Logs
+
+```bash
+# Last 50 lines
+pinchtab instance logs inst_abc123 | tail -50
+
+# Last 100 lines
+pinchtab instance logs inst_abc123 | tail -100
+
+# Follow logs (continuous)
+pinchtab instance logs inst_abc123 | tail -f
+```
+
+## Stop Instance
+
+```bash
+pinchtab instance stop <instance-id>
+```
+
+Example:
+```bash
+pinchtab instance stop inst_abc123
+```
+
+Output:
+```json
+{
+  "id": "inst_abc123",
+  "status": "stopped"
+}
+```
+
+### Alternative Syntax
+
+```bash
+pinchtab instance stop --id inst_abc123
+```
+
+### Stop All Instances
+
+```bash
+# Stop all running instances
+pinchtab instances | jq -r '.[] | .id' | xargs -I {} pinchtab instance stop {}
+```
+
+## Instance Navigate
+
+Navigate a specific instance (opens a new tab and navigates):
+
+```bash
+pinchtab instance navigate <instance-id> <url>
+```
+
+Example:
+```bash
+pinchtab instance navigate inst_abc123 https://github.com
+```
+
+Output:
+```json
+{
+  "tabId": "tab_xyz789",
+  "url": "https://github.com",
+  "title": "GitHub",
+  "status": "complete"
+}
+```
+
+<Note>
+This command internally:
+1. Opens a new tab on the instance
+2. Navigates that tab to the URL
+3. Returns the navigation result
+</Note>
+
+## Port Range Configuration
+
+Configure the port range for instances:
+
+```bash
+export INSTANCE_PORT_START=10000
+export INSTANCE_PORT_END=10100
+pinchtab
+```
+
+Or in `~/.pinchtab/config.json`:
+
+```json
+{
+  "instancePortStart": 10000,
+  "instancePortEnd": 10100
+}
+```
+
+## Common Workflows
+
+### Launch and Use Instance
+
+```bash
+# Launch headed instance
+INST=$(pinchtab instance launch --mode headed | jq -r .id)
+echo "Instance: $INST"
+
+# Navigate
+pinchtab instance navigate $INST https://example.com
+
+# Get instance URL
+URL=$(pinchtab instances | jq -r ".[] | select(.id == \"$INST\") | \"http://localhost:\(.port)\"")
+echo "Instance URL: $URL"
+
+# Use the instance via API
+curl $URL/snapshot?filter=interactive
+
+# Stop when done
+pinchtab instance stop $INST
+```
+
+### Multiple Instances
+
+```bash
+# Launch 3 instances
+for i in {1..3}; do
+  PORT=$((9868 + i))
+  INST=$(pinchtab instance launch --mode headed --port $PORT | jq -r .id)
+  echo "Instance $i: $INST on port $PORT"
+done
+
+# List all instances
+pinchtab instances
+
+# Stop all
+pinchtab instances | jq -r '.[] | .id' | xargs -I {} pinchtab instance stop {}
+```
+
+### Debug Instance Issues
+
+```bash
+# Check instance status
+pinchtab instances | jq '.[] | select(.id == "inst_abc123")'
+
+# View logs
+pinchtab instance logs inst_abc123 | tail -100
+
+# Check if port is accessible
+curl http://localhost:9868/health
+
+# Test navigation
+curl -X POST http://localhost:9868/navigate \
+  -H "Content-Type: application/json" \
+  -d '{"url": "https://example.com"}'
+```
+
+### Instance Health Monitoring
+
+```bash
+#!/bin/bash
+# monitor-instances.sh
+
+while true; do
+  clear
+  echo "=== PinchTab Instances ==="
+  echo ""
+  
+  pinchtab instances | jq -r '.[] | "\(.id) (\(.mode)): port \(.port) - \(.status)"'
+  
+  echo ""
+  echo "Total: $(pinchtab instances | jq 'length') instances"
+  
+  sleep 5
+done
+```
+
+Run:
+```bash
+chmod +x monitor-instances.sh
+./monitor-instances.sh
+```
+
+## Instance API Endpoints
+
+Each instance exposes its own HTTP API:
+
+### Instance Base URL
+
+```bash
+# Get instance URL
+URL=$(pinchtab instances | jq -r '.[] | select(.id == "inst_abc123") | "http://localhost:\(.port)"')
+echo $URL  # http://localhost:9868
+```
+
+### Available Endpoints
+
+```bash
+# Health check
+curl $URL/health
+
+# Navigate
+curl -X POST $URL/navigate \
+  -H "Content-Type: application/json" \
+  -d '{"url": "https://example.com"}'
+
+# Snapshot
+curl "$URL/snapshot?filter=interactive&format=compact"
+
+# Screenshot
+curl "$URL/screenshot?raw=true" -o screenshot.png
+
+# Action
+curl -X POST $URL/action \
+  -H "Content-Type: application/json" \
+  -d '{"kind": "click", "ref": "e5"}'
+
+# Tabs
+curl $URL/tabs
+```
+
+## Troubleshooting
+
+### Instance Won't Start
+
+```bash
+# Check port availability
+lsof -i :9868
+
+# Check logs
+pinchtab instance logs inst_abc123
+
+# Try different port
+pinchtab instance launch --port 9999
+```
+
+### Instance Not Responding
+
+```bash
+# Check instance status
+pinchtab instances | jq '.[] | select(.id == "inst_abc123")'
+
+# Test health endpoint
+curl http://localhost:9868/health
+
+# View recent logs
+pinchtab instance logs inst_abc123 | tail -50
+
+# Restart instance
+pinchtab instance stop inst_abc123
+pinchtab instance launch --port 9868
+```
+
+### Too Many Instances
+
+```bash
+# Count instances
+pinchtab instances | jq 'length'
+
+# Stop unused instances
+for id in $(pinchtab instances | jq -r '.[] | .id'); do
+  # Check if instance has tabs
+  TABS=$(curl -s http://localhost:$(pinchtab instances | jq -r ".[] | select(.id == \"$id\") | .port")/tabs | jq '.tabs | length')
+  if [ "$TABS" -eq 0 ]; then
+    echo "Stopping idle instance: $id"
+    pinchtab instance stop $id
+  fi
+done
+```
+
+### Port Range Exhausted
+
+```
+no available ports in range 9868-9968
+```
+
+Solution:
+
+```bash
+# Increase port range
+export INSTANCE_PORT_START=9868
+export INSTANCE_PORT_END=10968
+pinchtab
+
+# Or stop unused instances
+pinchtab instances | jq -r '.[] | .id' | head -5 | xargs -I {} pinchtab instance stop {}
+```
+
+## Next Steps
+
+<CardGroup cols={2}>
+  <Card title="Profile Management" icon="user" href="/cli/profile">
+    Manage browser profiles for instances
+  </Card>
+  
+  <Card title="Tab Management" icon="window-restore" href="/cli/tab">
+    Control tabs within instances
+  </Card>
+  
+  <Card title="Navigation" icon="compass" href="/cli/navigate">
+    Navigate tabs to URLs
+  </Card>
+  
+  <Card title="Snapshots" icon="camera" href="/cli/snapshot">
+    Capture page structure
+  </Card>
+</CardGroup>

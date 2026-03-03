@@ -1,0 +1,499 @@
+---
+title: 'Real-Time Dashboard'
+description: 'Monitor instances, profiles, and agent activity in real-time'
+---
+
+The PinchTab Dashboard is a **built-in web interface** for monitoring and managing browser instances, profiles, and automation activity.
+
+## Overview
+
+Access the dashboard at:
+```
+http://localhost:9867
+```
+
+Or explicitly:
+```
+http://localhost:9867/dashboard
+```
+
+<Info>
+The dashboard is served on the same port as the API (default: 9867)
+</Info>
+
+## Dashboard Screens
+
+### Instances View
+
+Monitor all running Chrome instances:
+
+**What it shows:**
+- Instance ID and profile name
+- Port number
+- Status (running, stopped, idle)
+- Number of tabs
+- Headless vs headed mode
+- Start time
+
+**Actions:**
+- View instance details
+- Stop instance
+- View instance logs
+- Create new instance
+
+**Example:**
+```json
+{
+  "id": "inst_0a89a5bb",
+  "profileName": "work",
+  "port": "9868",
+  "status": "running",
+  "headless": false,
+  "tabs": 3
+}
+```
+
+### Profiles View
+
+Browse and manage browser profiles:
+
+**What it shows:**
+- Profile name
+- Associated account (email/name)
+- Last used timestamp
+- Current status (running/stopped)
+- Disk usage
+- Profile metadata
+
+**Actions:**
+- Launch instance with profile
+- View profile details
+- Edit profile metadata
+- Delete profile
+- Search/filter profiles
+
+```go
+// Source: internal/api/types/types.go:7-27
+type Profile struct {
+    ID                string    `json:"id,omitempty"`
+    Name              string    `json:"name"`
+    Created           time.Time `json:"created"`
+    DiskUsage         int64     `json:"diskUsage"`
+    Running           bool      `json:"running"`
+    AccountEmail      string    `json:"accountEmail,omitempty"`
+    AccountName       string    `json:"accountName,omitempty"`
+    Description       string    `json:"description,omitempty"`
+}
+```
+
+### Agents Feed
+
+Real-time activity monitoring for all automation:
+
+**What it shows:**
+- Timestamp of each operation
+- Agent/user identifier
+- HTTP method (GET, POST, etc.)
+- API endpoint called
+- Duration (milliseconds)
+- HTTP status code
+- Operation details
+
+**Use cases:**
+- Debug automation workflows
+- Monitor agent performance
+- Audit API usage
+- Track errors in real-time
+- Understand agent behavior
+
+```go
+// Source: internal/dashboard/dashboard.go:30-51
+type AgentActivity struct {
+    AgentID     string    `json:"agentId"`
+    Profile     string    `json:"profile,omitempty"`
+    CurrentURL  string    `json:"currentUrl,omitempty"`
+    LastAction  string    `json:"lastAction,omitempty"`
+    LastSeen    time.Time `json:"lastSeen"`
+    Status      string    `json:"status"` // active/idle/disconnected
+    ActionCount int       `json:"actionCount"`
+}
+
+type AgentEvent struct {
+    AgentID    string    `json:"agentId"`
+    Action     string    `json:"action"`
+    Status     int       `json:"status"`
+    DurationMs int64     `json:"durationMs"`
+    Timestamp  time.Time `json:"timestamp"`
+}
+```
+
+## Real-Time Updates
+
+The dashboard uses **Server-Sent Events (SSE)** for live updates:
+
+```go
+// Source: internal/dashboard/dashboard.go:322-372
+func (d *Dashboard) handleSSE(w http.ResponseWriter, r *http.Request) {
+    w.Header().Set("Content-Type", "text/event-stream")
+    w.Header().Set("Cache-Control", "no-cache")
+    
+    agentCh := make(chan AgentEvent, d.cfg.SSEBufferSize)
+    sysCh := make(chan SystemEvent, d.cfg.SSEBufferSize)
+    
+    // Register channels for events
+    d.sseConns[agentCh] = struct{}{}
+    d.sysConns[sysCh] = struct{}{}
+    
+    // Stream events as they occur
+    for {
+        select {
+        case evt := <-agentCh:
+            fmt.Fprintf(w, "event: action\ndata: %s\n\n", data)
+        case evt := <-sysCh:
+            fmt.Fprintf(w, "event: system\ndata: %s\n\n", data)
+        }
+    }
+}
+```
+
+### Event Types
+
+**Action Events:**
+- Navigation (POST /navigate)
+- Snapshots (GET /snapshot)
+- Actions (POST /action)
+- Screenshots (GET /screenshot)
+- Tab operations
+
+**System Events:**
+- Instance started
+- Instance stopped
+- Instance error
+- Profile created/deleted
+
+<Steps>
+  <Step title="Event Occurs">
+    API operation triggers tracking middleware
+  </Step>
+  <Step title="Event Recorded">
+    Dashboard receives event with metadata
+  </Step>
+  <Step title="Broadcast">
+    Event sent to all connected SSE clients
+  </Step>
+  <Step title="UI Update">
+    Dashboard UI updates in real-time
+  </Step>
+</Steps>
+
+## Status Indicators
+
+### Instance Status
+
+<CardGroup cols={3}>
+  <Card title="Running" icon="circle-check" color="#10b981">
+    Active Chrome process accepting commands
+  </Card>
+  <Card title="Idle" icon="circle-pause" color="#f59e0b">
+    Running but no active tabs
+  </Card>
+  <Card title="Stopped" icon="circle-xmark" color="#ef4444">
+    Process not running
+  </Card>
+</CardGroup>
+
+### Agent Status
+
+| Status | Description | Timeout |
+|--------|-------------|---------|
+| **Active** | Recently performed action | < 30 seconds |
+| **Idle** | Connected but inactive | 30s - 5 min |
+| **Disconnected** | No activity | > 5 minutes |
+
+```go
+// Source: internal/dashboard/dashboard.go:229-251
+func (d *Dashboard) reaper(ctx context.Context) {
+    ticker := time.NewTicker(d.cfg.ReaperInterval)
+    for {
+        select {
+        case <-ticker.C:
+            now := time.Now()
+            for id, a := range d.agents {
+                if now.Sub(a.LastSeen) > d.cfg.DisconnectTimeout {
+                    d.agents[id].Status = "disconnected"
+                } else if now.Sub(a.LastSeen) > d.cfg.IdleTimeout {
+                    d.agents[id].Status = "idle"
+                }
+            }
+        }
+    }
+}
+```
+
+## Dashboard Configuration
+
+```go
+// Source: internal/dashboard/dashboard.go:20-25
+type DashboardConfig struct {
+    IdleTimeout       time.Duration // 30 seconds (default)
+    DisconnectTimeout time.Duration // 5 minutes (default)
+    ReaperInterval    time.Duration // 10 seconds (default)
+    SSEBufferSize     int          // 64 events (default)
+}
+```
+
+### Disable Dashboard
+
+```bash
+# API-only mode (no dashboard UI)
+BRIDGE_NO_DASHBOARD=true pinchtab
+```
+
+## Event Tracking
+
+The dashboard tracks all API operations via middleware:
+
+```go
+// Source: internal/dashboard/dashboard.go:441-471
+func (d *Dashboard) TrackingMiddleware(observers []EventObserver, next http.Handler) http.Handler {
+    return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+        start := time.Now()
+        
+        // Skip management routes
+        if isManagementRoute(r.URL.Path) {
+            next.ServeHTTP(w, r)
+            return
+        }
+        
+        // Track operation
+        sw := &web.StatusWriter{ResponseWriter: w, Code: 200}
+        next.ServeHTTP(sw, r)
+        
+        evt := AgentEvent{
+            AgentID:    extractAgentID(r),
+            Action:     r.Method + " " + r.URL.Path,
+            Status:     sw.Code,
+            DurationMs: time.Since(start).Milliseconds(),
+            Timestamp:  start,
+        }
+        
+        d.RecordEvent(evt)
+    })
+}
+```
+
+### Agent Identification
+
+Agents are identified by:
+
+1. **X-Agent-Id header:**
+```bash
+curl -H "X-Agent-Id: my-automation" http://localhost:9867/snapshot
+```
+
+2. **agentId query parameter:**
+```bash
+curl "http://localhost:9867/snapshot?agentId=my-automation"
+```
+
+3. **Default:** `"anonymous"`
+
+## Multi-Instance Monitoring
+
+The dashboard aggregates events from all child instances:
+
+```go
+// Source: internal/dashboard/dashboard.go:96-133
+func (d *Dashboard) relayChildEvents() {
+    tracked := make(map[string]context.CancelFunc)
+    
+    ticker := time.NewTicker(5 * time.Second)
+    for range ticker.C {
+        // Get all running instances
+        for _, inst := range d.instances.List() {
+            if inst.Status != "running" {
+                continue
+            }
+            
+            // Subscribe to each instance's SSE stream
+            if _, ok := tracked[inst.Port]; !ok {
+                go d.subscribeChildSSE(ctx, inst.Port, inst.ProfileName)
+            }
+        }
+    }
+}
+```
+
+<Info>
+The orchestrator automatically subscribes to SSE streams from all running instances and relays events to the main dashboard
+</Info>
+
+## Keyboard Shortcuts
+
+| Shortcut | Action |
+|----------|--------|
+| `R` | Refresh current screen |
+| `Esc` | Go back / Close modal |
+| `Ctrl+K` | Search |
+| `Ctrl+1` | Instances tab |
+| `Ctrl+2` | Profiles tab |
+| `Ctrl+3` | Profile Details tab |
+| `Ctrl+4` | Agents Feed tab |
+
+## Performance
+
+### Refresh Rate
+
+- **Real-time updates:** WebSocket/SSE-based (instant)
+- **History retention:** Last 1000 agent events
+- **Keepalive interval:** 30 seconds
+
+### Scalability
+
+Optimized for:
+- 10+ concurrent instances
+- 100+ profiles
+- High-throughput event streams
+
+```go
+// Source: internal/dashboard/dashboard.go:350-353
+// Keepalive prevents connection timeout
+keepalive := time.NewTicker(30 * time.Second)
+case <-keepalive.C:
+    fmt.Fprintf(w, ": keepalive\n\n")
+```
+
+## Dark Mode
+
+The dashboard automatically detects system preference:
+
+- **Auto:** Uses system dark/light mode
+- **Manual toggle:** Click theme icon in top-right
+- **Persistence:** Saved in browser localStorage
+
+## API Endpoints
+
+Dashboard-specific APIs:
+
+### Get Agents
+
+```bash
+curl http://localhost:9867/api/agents | jq .
+```
+
+**Response:**
+```json
+[
+  {
+    "agentId": "automation-bot",
+    "profile": "work",
+    "lastAction": "POST /navigate",
+    "lastSeen": "2026-03-01T12:34:56Z",
+    "status": "active",
+    "actionCount": 42
+  }
+]
+```
+
+### Event Stream (SSE)
+
+```bash
+curl -N http://localhost:9867/api/events
+```
+
+**Response Stream:**
+```text
+event: init
+data: [{"agentId":"bot","status":"active",...}]
+
+event: action
+data: {"agentId":"bot","action":"POST /navigate",...}
+
+event: system  
+data: {"type":"instance.started","instance":{...}}
+
+: keepalive
+```
+
+## Static Assets
+
+```go
+// Source: internal/dashboard/dashboard.go:27-28
+//go:embed dashboard/*
+var dashboardFS embed.FS
+```
+
+Assets are embedded in binary:
+- `dashboard/dashboard.html` — Main UI
+- `dashboard/assets/*` — JavaScript/CSS (hashed filenames)
+- `dashboard/pinchtab-headed-192.png` — Icon
+
+### Caching Strategy
+
+```go
+// Source: internal/dashboard/dashboard.go:392-398
+// Long cache for hashed assets (1 year)
+func (d *Dashboard) withLongCache(next http.Handler) http.Handler {
+    w.Header().Set("Cache-Control", "public, max-age=31536000, immutable")
+}
+
+// No cache for HTML (always fresh)
+func (d *Dashboard) withNoCache(next http.Handler) http.Handler {
+    w.Header().Set("Cache-Control", "no-store")
+}
+```
+
+## Troubleshooting
+
+### Dashboard Not Loading
+
+```bash
+# Check if PinchTab is running
+curl http://localhost:9867/health
+
+# Verify port
+echo $BRIDGE_PORT  # Default: 9867
+
+# Clear browser cache
+# Chrome: Ctrl+Shift+Delete
+```
+
+### No Instances Showing
+
+```bash
+# Verify instances are running
+curl http://localhost:9867/instances | jq .
+
+# Refresh page (R key)
+
+# Check browser console for errors (F12)
+```
+
+### Agent Events Not Updating
+
+```bash
+# Confirm agents are sending requests
+curl -H "X-Agent-Id: test" http://localhost:9867/health
+
+# Check SSE connection in DevTools
+# Network tab → Filter: WS/EventStream
+
+# Restart browser if connection stale
+```
+
+## Next Steps
+
+<CardGroup cols={2}>
+  <Card title="Browser Instances" href="/features/instances" icon="browser">
+    Monitor instance status and logs
+  </Card>
+  <Card title="Browser Profiles" href="/features/profiles" icon="user">
+    View profile usage and accounts
+  </Card>
+  <Card title="Agent Workflows" href="/guides/agent-workflows" icon="robot">
+    Track automation activity
+  </Card>
+  <Card title="API Reference" href="/api-reference/dashboard" icon="code">
+    Dashboard API endpoints
+  </Card>
+</CardGroup>

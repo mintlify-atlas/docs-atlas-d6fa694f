@@ -1,0 +1,377 @@
+---
+title: npm Installation
+description: Install PinchTab as an npm package for Node.js projects
+---
+
+PinchTab is available as an npm package that provides both a CLI tool and a Node.js SDK for browser automation.
+
+## Installation
+
+<Tabs>
+  <Tab title="Global (CLI)">
+    Install globally to use the `pinchtab` command anywhere:
+
+    ```bash
+    npm install -g pinchtab
+    ```
+
+    Verify installation:
+    ```bash
+    pinchtab --version
+    ```
+  </Tab>
+
+  <Tab title="Local (SDK)">
+    Install locally in your Node.js project:
+
+    ```bash
+    npm install pinchtab
+    ```
+
+    Use in your code:
+    ```javascript
+    import Pinchtab from 'pinchtab';
+
+    const pinch = new Pinchtab({ port: 9867 });
+    ```
+  </Tab>
+</Tabs>
+
+## How It Works
+
+The npm package automatically:
+
+1. **Detects** your OS and CPU architecture (macOS/Linux/Windows, amd64/arm64)
+2. **Downloads** the precompiled PinchTab binary from GitHub Releases
+3. **Verifies** integrity using SHA256 checksums from `checksums.txt`
+4. **Stores** in `~/.pinchtab/bin/{version}/` (version-specific to avoid conflicts)
+5. **Makes** the binary executable
+
+<Note>
+  The postinstall script runs automatically on `npm install`. It requires an internet connection on first install.
+</Note>
+
+## Requirements
+
+- **Node.js**: 16+ (18+ recommended)
+- **npm**: Any recent version
+- **OS**: macOS, Linux, or Windows
+- **Internet**: Required during installation to download binary
+- **Chrome/Chromium**: Must be installed on your system
+
+## Using the CLI
+
+After global installation, use the `pinchtab` command:
+
+### Start the Server
+
+```bash
+pinchtab serve --port 9867
+```
+
+### Check Version
+
+```bash
+pinchtab --version
+```
+
+### Get Help
+
+```bash
+pinchtab --help
+```
+
+## Using the Node.js SDK
+
+The npm package includes a TypeScript SDK for programmatic use.
+
+### Basic Example
+
+```typescript
+import Pinchtab from 'pinchtab';
+
+const pinch = new Pinchtab({ port: 9867 });
+
+// Start the server
+await pinch.start();
+
+// Take a snapshot
+const snapshot = await pinch.snapshot({ refs: 'role' });
+console.log(snapshot.html);
+
+// Click on an element
+await pinch.click({ ref: 'e42' });
+
+// Stop the server
+await pinch.stop();
+```
+
+### SDK API
+
+#### Constructor Options
+
+```typescript
+const pinch = new Pinchtab({
+  baseUrl: 'http://localhost:9867',  // API base URL
+  timeout: 30000,                     // Request timeout (ms)
+  port: 9867                          // Server port
+});
+```
+
+#### Methods
+
+**`start(binaryPath?)`**
+
+Start the PinchTab server process.
+
+```typescript
+await pinch.start();
+// or with custom binary path
+await pinch.start('/custom/path/to/pinchtab');
+```
+
+**`stop()`**
+
+Stop the PinchTab server process.
+
+```typescript
+await pinch.stop();
+```
+
+**`snapshot(params?)`**
+
+Take a snapshot of the current tab.
+
+```typescript
+const snapshot = await pinch.snapshot({
+  refs: 'role',           // 'role' or 'aria'
+  selector: '.container', // CSS selector filter
+  maxTokens: 2000,        // Token limit
+  format: 'full'          // 'full' or 'compact'
+});
+```
+
+**`click(params)`**
+
+Click on an element.
+
+```typescript
+await pinch.click({
+  ref: 'e42',             // Element reference
+  targetId: 'tab_id'      // Optional target tab ID
+});
+```
+
+**`lock(params)` / `unlock(params)`**
+
+Lock or unlock a tab.
+
+```typescript
+await pinch.lock({
+  tabId: 'tab_123',
+  timeoutMs: 5000
+});
+
+await pinch.unlock({ tabId: 'tab_123' });
+```
+
+**`createTab(params)`**
+
+Create a new tab.
+
+```typescript
+const tab = await pinch.createTab({
+  url: 'https://example.com',
+  stealth: 'light'  // 'light' or 'full'
+});
+```
+
+## Configuration
+
+### Using Custom Binary Path
+
+For Docker, development, or custom setups:
+
+```bash
+PINCHTAB_BINARY_PATH=/path/to/pinchtab npx pinchtab serve
+```
+
+Or in code:
+
+```typescript
+const pinch = new Pinchtab();
+await pinch.start('/custom/path/to/pinchtab');
+```
+
+### Proxy Support
+
+The npm package works with corporate proxies using standard environment variables:
+
+```bash
+npm install --https-proxy https://proxy.company.com:8080 pinchtab
+```
+
+Or:
+
+```bash
+export HTTPS_PROXY=https://user:pass@proxy.company.com:8080
+npm install pinchtab
+```
+
+## Troubleshooting
+
+### "command not found: pinchtab"
+
+**Problem**: Global installation succeeded but command not found.
+
+**Solution**: Add npm's global bin directory to your PATH:
+
+```bash
+export PATH="$(npm config get prefix)/bin:$PATH"
+```
+
+Add to `~/.bashrc` or `~/.zshrc` to persist:
+
+```bash
+echo 'export PATH="$(npm config get prefix)/bin:$PATH"' >> ~/.zshrc
+```
+
+### Binary Not Found After Install
+
+**Problem**: Postinstall script failed to download binary.
+
+**Check if release has binaries**:
+
+```bash
+curl -s https://api.github.com/repos/pinchtab/pinchtab/releases/latest | jq '.assets[].name'
+```
+
+You should see: `pinchtab-darwin-arm64`, `pinchtab-linux-x64`, etc.
+
+**Rebuild**:
+
+```bash
+npm rebuild pinchtab
+```
+
+### Permission Errors (EACCES)
+
+**Problem**: Permission denied during global install.
+
+**Solution 1: Use nvm (recommended)**
+
+```bash
+curl https://github.com/nvm-sh/nvm/raw/master/install.sh | bash
+nvm install node
+npm install -g pinchtab
+```
+
+**Solution 2: Use user prefix**
+
+```bash
+npm install -g --prefix "$HOME/.local" pinchtab
+export PATH="$HOME/.local/bin:$PATH"
+```
+
+**Solution 3: Fix npm permissions globally**
+
+```bash
+mkdir ~/.npm-global
+npm config set prefix '~/.npm-global'
+export PATH=~/.npm-global/bin:$PATH  # Add to ~/.bashrc or ~/.zshrc
+```
+
+### Behind Corporate Proxy
+
+**Problem**: Cannot download binary due to proxy.
+
+**Solution**: Set proxy environment variable:
+
+```bash
+export HTTPS_PROXY=https://proxy:port
+npm rebuild pinchtab
+```
+
+### Node Version Too Old
+
+**Problem**: "npm ERR! engine Unsupported engine"
+
+**Solution**: Upgrade Node.js to version 16 or higher:
+
+```bash
+# Using nvm
+nvm install 18
+nvm use 18
+
+# Or download from nodejs.org
+```
+
+### Using Pre-built Binary
+
+**Problem**: Need to use a specific binary (development, custom build).
+
+**Solution**: Set `PINCHTAB_BINARY_PATH` environment variable:
+
+```bash
+PINCHTAB_BINARY_PATH=/path/to/binary npm rebuild pinchtab
+```
+
+## Package Details
+
+From `package.json`:
+
+```json
+{
+  "name": "pinchtab",
+  "version": "0.7.6",
+  "description": "Browser control API for AI agents",
+  "main": "dist/index.js",
+  "types": "dist/index.d.ts",
+  "bin": {
+    "pinchtab": "bin/pinchtab"
+  },
+  "engines": {
+    "node": ">=16"
+  },
+  "keywords": [
+    "browser",
+    "automation",
+    "api",
+    "agent",
+    "ai",
+    "headless",
+    "chromedp",
+    "stealth",
+    "ai-agent"
+  ],
+  "license": "MIT"
+}
+```
+
+## Future: Optional Dependencies Pattern
+
+<Note>
+  In a future major version (v1.0), PinchTab will migrate to the modern `optionalDependencies` pattern used by tools like esbuild, Biome, and Turbo.
+</Note>
+
+This will:
+- Split platform-specific binaries into separate packages (`@pinchtab/cli-darwin-arm64`, etc.)
+- Provide zero postinstall network overhead
+- Enable perfect offline support
+
+## Next Steps
+
+<CardGroup cols={2}>
+  <Card title="Quick Start" icon="rocket" href="/quickstart">
+    Start automating with PinchTab
+  </Card>
+  <Card title="API Reference" icon="code" href="/api-reference">
+    Explore HTTP endpoints
+  </Card>
+  <Card title="Node.js Examples" icon="code-branch" href="/essentials/sdk-usage">
+    See more SDK examples
+  </Card>
+  <Card title="Configuration" icon="gear" href="/essentials/configuration">
+    Configure environment variables
+  </Card>
+</CardGroup>

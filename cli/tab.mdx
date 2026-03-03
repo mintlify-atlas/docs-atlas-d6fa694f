@@ -1,0 +1,605 @@
+---
+title: 'Tab Commands'
+description: 'Manage browser tabs and perform tab-scoped operations'
+icon: 'window-restore'
+---
+
+# Tab Management
+
+Tabs are individual browser pages within an instance. Each tab has its own navigation history, DOM, and execution context.
+
+## List Tabs
+
+```bash
+pinchtab tabs
+```
+
+Output:
+```json
+{
+  "tabs": [
+    {
+      "id": "tab_abc123",
+      "url": "https://example.com",
+      "title": "Example Domain",
+      "active": true
+    },
+    {
+      "id": "tab_xyz789",
+      "url": "https://github.com",
+      "title": "GitHub",
+      "active": false
+    }
+  ]
+}
+```
+
+### Filter Tabs
+
+```bash
+# Get all tab IDs
+pinchtab tabs | jq -r '.tabs[] | .id'
+
+# Count tabs
+pinchtab tabs | jq '.tabs | length'
+
+# Get active tab
+pinchtab tabs | jq '.tabs[] | select(.active == true)'
+
+# Find tab by URL
+pinchtab tabs | jq '.tabs[] | select(.url | contains("github"))'
+```
+
+## Create Tab
+
+```bash
+pinchtab tab new <url>
+```
+
+Example:
+```bash
+pinchtab tab new https://example.com
+```
+
+Output:
+```json
+{
+  "action": "new",
+  "tabId": "tab_abc123",
+  "url": "https://example.com"
+}
+```
+
+Create without URL (blank tab):
+```bash
+pinchtab tab new
+```
+
+### Capture Tab ID
+
+```bash
+TAB=$(pinchtab tab new https://example.com | jq -r .tabId)
+echo "Tab ID: $TAB"
+```
+
+## Close Tab
+
+```bash
+pinchtab tab close <tab-id>
+```
+
+Example:
+```bash
+pinchtab tab close tab_abc123
+```
+
+Output:
+```json
+{
+  "action": "close",
+  "tabId": "tab_abc123",
+  "status": "closed"
+}
+```
+
+### Close All Tabs
+
+```bash
+pinchtab tabs | jq -r '.tabs[] | .id' | xargs -I {} pinchtab tab close {}
+```
+
+## Tab Operations
+
+Perform operations on specific tabs using the `pinchtab tab <operation> <tabId>` pattern.
+
+### Navigate Tab
+
+```bash
+pinchtab tab navigate <tab-id> <url> [flags]
+```
+
+Example:
+```bash
+pinchtab tab navigate tab_abc123 https://github.com
+```
+
+Flags:
+
+<ParamField path="--timeout" type="integer">
+  Navigation timeout in seconds.
+  
+  ```bash
+  pinchtab tab navigate tab_abc123 https://example.com --timeout 30
+  ```
+</ParamField>
+
+<ParamField path="--block-images" type="boolean">
+  Block image loading for faster navigation.
+  
+  ```bash
+  pinchtab tab navigate tab_abc123 https://example.com --block-images
+  ```
+</ParamField>
+
+<ParamField path="--block-ads" type="boolean">
+  Block known ad domains.
+  
+  ```bash
+  pinchtab tab navigate tab_abc123 https://example.com --block-ads
+  ```
+</ParamField>
+
+### Snapshot Tab
+
+```bash
+pinchtab tab snapshot <tab-id> [flags]
+```
+
+Example:
+```bash
+pinchtab tab snapshot tab_abc123 -i -c
+```
+
+Flags:
+- `-i, --interactive` - Interactive elements only
+- `-c, --compact` - Compact format
+- `-d, --diff` - Show only changes
+
+See [Snapshot Command](/cli/snapshot) for detailed flag documentation.
+
+### Screenshot Tab
+
+```bash
+pinchtab tab screenshot <tab-id> [flags]
+```
+
+Example:
+```bash
+pinchtab tab screenshot tab_abc123 -o screenshot.png
+```
+
+Flags:
+
+<ParamField path="-o, --output" type="string">
+  Output filename.
+  
+  ```bash
+  pinchtab tab screenshot tab_abc123 -o page.png
+  ```
+</ParamField>
+
+<ParamField path="-q, --quality" type="integer" default="80">
+  JPEG quality (0-100).
+  
+  ```bash
+  pinchtab tab screenshot tab_abc123 -o page.jpg -q 90
+  ```
+</ParamField>
+
+### Click Element in Tab
+
+```bash
+pinchtab tab click <tab-id> <ref>
+```
+
+Example:
+```bash
+pinchtab tab click tab_abc123 e5
+```
+
+### Type Text in Tab
+
+```bash
+pinchtab tab type <tab-id> <ref> <text>
+```
+
+Example:
+```bash
+pinchtab tab type tab_abc123 e12 "hello world"
+```
+
+### Fill Input in Tab
+
+```bash
+pinchtab tab fill <tab-id> <ref> <text>
+```
+
+Example:
+```bash
+pinchtab tab fill tab_abc123 e12 "value"
+```
+
+### Press Key in Tab
+
+```bash
+pinchtab tab press <tab-id> <key>
+```
+
+Example:
+```bash
+pinchtab tab press tab_abc123 Enter
+pinchtab tab press tab_abc123 Tab
+pinchtab tab press tab_abc123 Escape
+```
+
+### Scroll Tab
+
+```bash
+pinchtab tab scroll <tab-id> <direction|pixels>
+```
+
+Examples:
+```bash
+# Scroll by direction
+pinchtab tab scroll tab_abc123 down
+pinchtab tab scroll tab_abc123 up
+
+# Scroll by pixels
+pinchtab tab scroll tab_abc123 500
+```
+
+### Select Dropdown in Tab
+
+```bash
+pinchtab tab select <tab-id> <ref> <value>
+```
+
+Example:
+```bash
+pinchtab tab select tab_abc123 e5 option2
+```
+
+### Hover Element in Tab
+
+```bash
+pinchtab tab hover <tab-id> <ref>
+```
+
+Example:
+```bash
+pinchtab tab hover tab_abc123 e5
+```
+
+### Focus Element in Tab
+
+```bash
+pinchtab tab focus <tab-id> <ref>
+```
+
+Example:
+```bash
+pinchtab tab focus tab_abc123 e12
+```
+
+### Extract Text from Tab
+
+```bash
+pinchtab tab text <tab-id> [--raw]
+```
+
+Example:
+```bash
+# JSON output
+pinchtab tab text tab_abc123
+
+# Raw text
+pinchtab tab text tab_abc123 --raw
+```
+
+### Evaluate JavaScript in Tab
+
+```bash
+pinchtab tab eval <tab-id> <expression>
+```
+
+Examples:
+```bash
+# Get document title
+pinchtab tab eval tab_abc123 "document.title"
+
+# Count links
+pinchtab tab eval tab_abc123 "document.querySelectorAll('a').length"
+
+# Complex expression
+pinchtab tab eval tab_abc123 'JSON.stringify({title: document.title, url: location.href})'
+```
+
+### Export Tab as PDF
+
+```bash
+pinchtab tab pdf <tab-id> [flags]
+```
+
+Example:
+```bash
+pinchtab tab pdf tab_abc123 -o page.pdf
+```
+
+Flags:
+- `-o, --output` - Output filename
+- `--landscape` - Landscape orientation
+- `--scale` - Print scale (0.1-2.0)
+
+See [PDF export documentation](/cli/pdf) for all flags.
+
+### Get Tab Cookies
+
+```bash
+pinchtab tab cookies <tab-id>
+```
+
+Example:
+```bash
+pinchtab tab cookies tab_abc123
+```
+
+### Lock Tab
+
+Lock a tab to prevent concurrent access:
+
+```bash
+pinchtab tab lock <tab-id> [--owner <owner>] [--ttl <seconds>]
+```
+
+Example:
+```bash
+# Lock for 60 seconds
+pinchtab tab lock tab_abc123 --owner my-agent --ttl 60
+```
+
+<ParamField path="--owner" type="string">
+  Owner identifier for the lock.
+  
+  ```bash
+  pinchtab tab lock tab_abc123 --owner agent-1
+  ```
+</ParamField>
+
+<ParamField path="--ttl" type="integer" default="60">
+  Lock time-to-live in seconds.
+  
+  ```bash
+  pinchtab tab lock tab_abc123 --ttl 120
+  ```
+</ParamField>
+
+### Unlock Tab
+
+```bash
+pinchtab tab unlock <tab-id> [--owner <owner>]
+```
+
+Example:
+```bash
+pinchtab tab unlock tab_abc123 --owner my-agent
+```
+
+### List Tab Locks
+
+```bash
+pinchtab tab locks <tab-id>
+```
+
+Example:
+```bash
+pinchtab tab locks tab_abc123
+```
+
+### Get Tab Info
+
+```bash
+pinchtab tab info <tab-id>
+```
+
+Example:
+```bash
+pinchtab tab info tab_abc123
+```
+
+Output:
+```json
+{
+  "id": "tab_abc123",
+  "url": "https://example.com",
+  "title": "Example Domain",
+  "active": true,
+  "loading": false
+}
+```
+
+## Common Workflows
+
+### Multi-Tab Navigation
+
+```bash
+# Open multiple tabs
+TAB1=$(pinchtab tab new https://github.com | jq -r .tabId)
+TAB2=$(pinchtab tab new https://example.com | jq -r .tabId)
+TAB3=$(pinchtab tab new https://google.com | jq -r .tabId)
+
+# List all tabs
+pinchtab tabs
+
+# Take screenshots of all tabs
+pinchtab tab screenshot $TAB1 -o github.png
+pinchtab tab screenshot $TAB2 -o example.png
+pinchtab tab screenshot $TAB3 -o google.png
+
+# Close all tabs
+pinchtab tab close $TAB1
+pinchtab tab close $TAB2
+pinchtab tab close $TAB3
+```
+
+### Tab Isolation
+
+```bash
+# Each tab has isolated state
+TAB=$(pinchtab tab new https://example.com | jq -r .tabId)
+
+# Set cookies in this tab
+curl -X POST http://localhost:9867/tabs/$TAB/cookies \
+  -d '{"name": "session", "value": "abc123"}'
+
+# Cookies only affect this tab
+pinchtab tab cookies $TAB
+```
+
+### Parallel Tab Operations
+
+```bash
+# Get all tab IDs
+TABS=$(pinchtab tabs | jq -r '.tabs[] | .id')
+
+# Take screenshots in parallel
+for TAB in $TABS; do
+  (
+    FILE="screenshot-${TAB}.png"
+    pinchtab tab screenshot $TAB -o $FILE
+    echo "Saved: $FILE"
+  ) &
+done
+wait
+
+echo "All screenshots complete"
+```
+
+### Tab Locks for Coordination
+
+```bash
+# Agent 1: Lock tab
+TAB=$(pinchtab tabs | jq -r '.tabs[0].id')
+pinchtab tab lock $TAB --owner agent-1 --ttl 120
+
+# Do work on tab
+pinchtab tab navigate $TAB https://example.com
+pinchtab tab snapshot $TAB -i
+
+# Release lock
+pinchtab tab unlock $TAB --owner agent-1
+
+# Agent 2: Can now lock same tab
+pinchtab tab lock $TAB --owner agent-2 --ttl 120
+```
+
+## Troubleshooting
+
+### Tab Not Found
+
+```
+tab not found: tab_abc123
+```
+
+Solution:
+
+```bash
+# List current tabs
+pinchtab tabs
+
+# Verify tab ID
+pinchtab tabs | jq -r '.tabs[] | .id'
+```
+
+### Too Many Tabs
+
+```
+max tabs limit reached (20)
+```
+
+Solution:
+
+```bash
+# Close unused tabs
+pinchtab tabs | jq -r '.tabs[] | .id' | head -10 | xargs -I {} pinchtab tab close {}
+
+# Or increase limit
+export BRIDGE_MAX_TABS=50
+pinchtab
+```
+
+### Tab Lock Conflict
+
+```
+tab locked by agent-1
+```
+
+Solution:
+
+```bash
+# Check lock status
+pinchtab tab locks tab_abc123
+
+# Wait for lock to expire (TTL)
+# Or force unlock (if you own it)
+pinchtab tab unlock tab_abc123 --owner agent-1
+```
+
+## Tab API Endpoints
+
+Direct HTTP API access:
+
+```bash
+# List tabs
+curl http://localhost:9867/tabs
+
+# Create tab
+curl -X POST http://localhost:9867/tab \
+  -H "Content-Type: application/json" \
+  -d '{"action": "new", "url": "https://example.com"}'
+
+# Close tab
+curl -X POST http://localhost:9867/tab \
+  -H "Content-Type: application/json" \
+  -d '{"action": "close", "tabId": "tab_abc123"}'
+
+# Navigate tab
+curl -X POST http://localhost:9867/tabs/tab_abc123/navigate \
+  -H "Content-Type: application/json" \
+  -d '{"url": "https://github.com"}'
+
+# Snapshot tab
+curl "http://localhost:9867/tabs/tab_abc123/snapshot?interactive=true&compact=true"
+
+# Screenshot tab
+curl "http://localhost:9867/tabs/tab_abc123/screenshot?raw=true" -o screenshot.png
+```
+
+## Next Steps
+
+<CardGroup cols={2}>
+  <Card title="Navigation" icon="compass" href="/cli/navigate">
+    Navigate tabs to URLs
+  </Card>
+  
+  <Card title="Snapshot" icon="camera" href="/cli/snapshot">
+    Capture tab structure
+  </Card>
+  
+  <Card title="Actions" icon="hand-pointer" href="/cli/action">
+    Interact with tab elements
+  </Card>
+  
+  <Card title="Instance Management" icon="layer-group" href="/cli/instance">
+    Manage browser instances
+  </Card>
+</CardGroup>

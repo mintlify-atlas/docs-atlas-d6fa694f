@@ -1,0 +1,540 @@
+---
+title: 'Stealth & Fingerprint API'
+description: 'Stealth mode and browser fingerprint management'
+---
+
+## Overview
+
+The Stealth API helps your browser automation avoid detection by:
+
+- Hiding automation indicators
+- Rotating browser fingerprints
+- Masking WebDriver presence
+- Randomizing user agent and headers
+
+<Note>
+Stealth features help make automated browsers appear more like real user browsers.
+</Note>
+
+## Get Stealth Status
+
+Check current stealth configuration.
+
+```http
+GET /stealth/status
+```
+
+<CodeGroup>
+```bash cURL
+curl http://localhost:9867/stealth/status | jq .
+```
+
+```python Python
+import requests
+
+resp = requests.get("http://localhost:9867/stealth/status")
+status = resp.json()
+
+print(f"Stealth enabled: {status['enabled']}")
+print(f"Level: {status['level']}")
+print(f"Features: {status['features']}")
+```
+
+```javascript JavaScript
+const resp = await fetch("http://localhost:9867/stealth/status");
+const status = await resp.json();
+
+console.log(`Stealth: ${status.enabled}`);
+console.log(`Level: ${status.level}`);
+```
+</CodeGroup>
+
+### Response (200 OK)
+
+```json
+{
+  "enabled": true,
+  "level": "full",
+  "features": {
+    "hideWebDriver": true,
+    "chromeRuntime": true,
+    "permissions": true,
+    "navigator": true,
+    "plugins": true,
+    "languages": true,
+    "webGL": true,
+    "audioContext": true
+  },
+  "userAgent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36...",
+  "platform": "MacIntel"
+}
+```
+
+### Response Fields
+
+<ResponseField name="enabled" type="boolean" required>
+  Whether stealth mode is active
+</ResponseField>
+
+<ResponseField name="level" type="string" required>
+  Stealth level: `light` or `full`
+</ResponseField>
+
+<ResponseField name="features" type="object" required>
+  Enabled stealth features
+</ResponseField>
+
+<ResponseField name="userAgent" type="string" required>
+  Current user agent string
+</ResponseField>
+
+<ResponseField name="platform" type="string" required>
+  Browser platform identifier
+</ResponseField>
+
+---
+
+## Rotate Fingerprint
+
+Generate a new browser fingerprint.
+
+```http
+POST /fingerprint/rotate
+```
+
+<CodeGroup>
+```bash cURL
+curl -X POST http://localhost:9867/fingerprint/rotate | jq .
+```
+
+```python Python
+import requests
+
+# Rotate fingerprint
+resp = requests.post("http://localhost:9867/fingerprint/rotate")
+result = resp.json()
+
+print("New fingerprint:")
+print(f"User Agent: {result['userAgent']}")
+print(f"Platform: {result['platform']}")
+print(f"Languages: {result['languages']}")
+```
+
+```javascript JavaScript
+const resp = await fetch(
+  "http://localhost:9867/fingerprint/rotate",
+  { method: "POST" }
+);
+const result = await resp.json();
+
+console.log("Rotated fingerprint:");
+console.log(`UA: ${result.userAgent}`);
+console.log(`Platform: ${result.platform}`);
+```
+</CodeGroup>
+
+### Response (200 OK)
+
+```json
+{
+  "rotated": true,
+  "userAgent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36...",
+  "platform": "Win32",
+  "languages": ["en-US", "en"],
+  "vendor": "Google Inc.",
+  "webGLVendor": "Intel Inc.",
+  "webGLRenderer": "Intel Iris OpenGL Engine"
+}
+```
+
+### Response Fields
+
+<ResponseField name="rotated" type="boolean" required>
+  Whether fingerprint was successfully rotated
+</ResponseField>
+
+<ResponseField name="userAgent" type="string" required>
+  New user agent string
+</ResponseField>
+
+<ResponseField name="platform" type="string" required>
+  New platform (Win32, MacIntel, Linux x86_64)
+</ResponseField>
+
+<ResponseField name="languages" type="array" required>
+  Browser language preferences
+</ResponseField>
+
+<ResponseField name="vendor" type="string" required>
+  Navigator vendor
+</ResponseField>
+
+<ResponseField name="webGLVendor" type="string">
+  WebGL vendor string
+</ResponseField>
+
+<ResponseField name="webGLRenderer" type="string">
+  WebGL renderer string
+</ResponseField>
+
+---
+
+## Stealth Levels
+
+### light
+
+Basic stealth with minimal fingerprint changes:
+
+- Hides `navigator.webdriver`
+- Patches Chrome runtime
+- Randomizes basic headers
+
+Best for: General automation where detection risk is low.
+
+### full
+
+Comprehensive stealth with extensive fingerprinting:
+
+- All `light` features
+- Randomizes navigator properties
+- Spoofs plugins and permissions
+- Modifies WebGL fingerprint
+- Randomizes audio context
+- Custom canvas fingerprint
+
+Best for: High-security scenarios, avoiding sophisticated detection.
+
+<Note>
+Configure stealth level via environment variable or config file when starting PinchTab.
+</Note>
+
+---
+
+## Stealth Features
+
+### hideWebDriver
+
+Removes `navigator.webdriver` flag.
+
+```javascript
+// Without stealth
+console.log(navigator.webdriver);  // true
+
+// With stealth
+console.log(navigator.webdriver);  // undefined
+```
+
+### chromeRuntime
+
+Patches `window.chrome.runtime` to appear as normal Chrome browser.
+
+### permissions
+
+Spoofs Permissions API to return realistic values.
+
+### navigator
+
+Randomizes navigator properties:
+- `platform`
+- `vendor`
+- `hardwareConcurrency`
+- `deviceMemory`
+
+### plugins
+
+Adds realistic plugin list (e.g., PDF Viewer, Chrome PDF Plugin).
+
+### languages
+
+Sets realistic language preferences.
+
+### webGL
+
+Randomizes WebGL fingerprint to avoid tracking.
+
+### audioContext
+
+Modifies AudioContext fingerprint.
+
+---
+
+## Complete Example
+
+```python
+import requests
+import time
+
+BASE = "http://localhost:9867"
+
+# Check stealth status
+resp = requests.get(f"{BASE}/stealth/status")
+status = resp.json()
+print(f"Stealth enabled: {status['enabled']}")
+print(f"Level: {status['level']}")
+
+# Rotate fingerprint
+resp = requests.post(f"{BASE}/fingerprint/rotate")
+fingerprint = resp.json()
+print(f"\nNew fingerprint:")
+print(f"User Agent: {fingerprint['userAgent']}")
+print(f"Platform: {fingerprint['platform']}")
+
+# Start instance with new fingerprint
+inst = requests.post(f"{BASE}/instances/start",
+    json={"mode": "headed"}).json()
+
+# Open tab
+tab = requests.post(f"{BASE}/instances/{inst['id']}/tabs/open",
+    json={"url": "https://bot.sannysoft.com"}).json()
+
+tab_id = tab["tabId"]
+
+# Wait for page to load
+time.sleep(5)
+
+# Check detection
+resp = requests.post(f"{BASE}/tabs/{tab_id}/evaluate", json={
+    "expression": "navigator.webdriver === undefined"
+})
+no_webdriver = resp.json()["result"]
+print(f"\nWebDriver hidden: {no_webdriver}")
+
+# Take screenshot to verify
+resp = requests.get(
+    f"{BASE}/tabs/{tab_id}/screenshot?raw=true&quality=90"
+)
+with open("stealth_test.jpg", "wb") as f:
+    f.write(resp.content)
+
+print("Screenshot saved to stealth_test.jpg")
+
+# Cleanup
+requests.post(f"{BASE}/instances/{inst['id']}/stop")
+```
+
+---
+
+## Fingerprint Rotation Strategy
+
+### Per-Session Rotation
+
+Rotate fingerprint for each new session:
+
+```python
+def create_stealth_session():
+    # Rotate fingerprint
+    requests.post("http://localhost:9867/fingerprint/rotate")
+    
+    # Start instance
+    inst = requests.post("http://localhost:9867/instances/start",
+        json={"mode": "headless"}).json()
+    
+    return inst["id"]
+
+# Each session gets new fingerprint
+session1 = create_stealth_session()
+session2 = create_stealth_session()
+```
+
+### Periodic Rotation
+
+Rotate fingerprint periodically during long-running sessions:
+
+```python
+import time
+import threading
+
+def rotate_periodically(interval_seconds=3600):
+    """Rotate fingerprint every hour"""
+    while True:
+        time.sleep(interval_seconds)
+        resp = requests.post("http://localhost:9867/fingerprint/rotate")
+        print(f"Fingerprint rotated: {resp.json()['userAgent']}")
+
+# Start rotation thread
+thread = threading.Thread(target=rotate_periodically, args=(3600,))
+thread.daemon = True
+thread.start()
+```
+
+---
+
+## Detection Testing
+
+Test your stealth configuration against detection tools:
+
+### Bot Detection Sites
+
+```python
+detection_sites = [
+    "https://bot.sannysoft.com",
+    "https://arh.antoinevastel.com/bots/areyouheadless",
+    "https://pixelscan.net",
+    "https://www.browserscan.net"
+]
+
+for site in detection_sites:
+    # Navigate
+    requests.post(f"{BASE}/tabs/{tab_id}/navigate",
+        json={"url": site, "waitFor": "networkidle"})
+    
+    time.sleep(3)
+    
+    # Take screenshot
+    name = site.split("//")[1].replace("/", "_")
+    resp = requests.get(f"{BASE}/tabs/{tab_id}/screenshot?raw=true")
+    
+    with open(f"detection_{name}.jpg", "wb") as f:
+        f.write(resp.content)
+    
+    print(f"Tested: {site}")
+```
+
+### Check WebDriver Flag
+
+```python
+resp = requests.post(f"{BASE}/tabs/{tab_id}/evaluate", json={
+    "expression": """
+        ({
+            webdriver: navigator.webdriver,
+            plugins: navigator.plugins.length,
+            languages: navigator.languages,
+            platform: navigator.platform,
+            vendor: navigator.vendor
+        })
+    """
+})
+
+result = resp.json()["result"]
+print("Detection check:")
+print(f"  webdriver: {result['webdriver']}")  # Should be undefined
+print(f"  plugins: {result['plugins']}")      # Should be > 0
+print(f"  platform: {result['platform']}")
+```
+
+---
+
+## Best Practices
+
+### Enable Stealth Early
+
+Configure stealth before starting instances:
+
+```bash
+# Set environment variable
+export STEALTH_LEVEL=full
+pinchtab
+```
+
+### Rotate Between Sessions
+
+```python
+# ✅ Good: New fingerprint per task
+for task in tasks:
+    requests.post(f"{BASE}/fingerprint/rotate")
+    run_task(task)
+
+# ❌ Bad: Same fingerprint for all tasks
+for task in tasks:
+    run_task(task)
+```
+
+### Combine with Proxies
+
+Use stealth with rotating proxies for maximum anonymity:
+
+```python
+# Rotate both fingerprint and proxy
+requests.post(f"{BASE}/fingerprint/rotate")
+inst = requests.post(f"{BASE}/instances/start", json={
+    "mode": "headless",
+    "proxy": get_next_proxy()
+})
+```
+
+### Test Regularly
+
+```python
+def test_stealth(tab_id):
+    """Test if stealth is working"""
+    resp = requests.post(f"{BASE}/tabs/{tab_id}/evaluate", json={
+        "expression": "navigator.webdriver === undefined"
+    })
+    
+    if not resp.json()["result"]:
+        print("WARNING: WebDriver detected!")
+        return False
+    
+    print("Stealth check passed")
+    return True
+```
+
+---
+
+## Limitations
+
+<Warning>
+- Stealth reduces detection risk but doesn't guarantee invisibility
+- Some sophisticated detection methods may still identify automation
+- Stealth features may impact performance slightly
+- Not all websites can be fooled by stealth techniques
+</Warning>
+
+### What Stealth Can't Hide
+
+- Network patterns (same IP, timing)
+- Mouse movement patterns
+- Behavioral analysis
+- Server-side detection
+
+### Mitigation
+
+Combine stealth with:
+- Proxy rotation
+- Random delays
+- Human-like mouse movements
+- Varied browsing patterns
+
+---
+
+## Configuration
+
+Set stealth level via environment variable:
+
+```bash
+# Light stealth
+STEALTH_LEVEL=light pinchtab
+
+# Full stealth (recommended)
+STEALTH_LEVEL=full pinchtab
+
+# Disable stealth
+STEALTH_LEVEL=none pinchtab
+```
+
+Or in config file (`~/.pinchtab/config.yaml`):
+
+```yaml
+stealth:
+  enabled: true
+  level: full
+```
+
+---
+
+## Next Steps
+
+<CardGroup cols={2}>
+  <Card title="Authentication" icon="lock" href="/api/authentication">
+    Secure your API
+  </Card>
+  <Card title="Cookies" icon="cookie" href="/api/cookies">
+    Manage cookies and sessions
+  </Card>
+  <Card title="Navigation" icon="compass" href="/api/navigation">
+    Navigate with stealth
+  </Card>
+  <Card title="Profiles" icon="user" href="/api/profiles">
+    Use profiles for state persistence
+  </Card>
+</CardGroup>

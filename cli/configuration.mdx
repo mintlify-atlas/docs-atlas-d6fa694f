@@ -1,0 +1,426 @@
+---
+title: 'Configuration'
+description: 'Configure PinchTab CLI with environment variables and config files'
+icon: 'gear'
+---
+
+# CLI Configuration
+
+PinchTab can be configured using environment variables or a JSON configuration file.
+
+## Environment Variables
+
+### Server Connection
+
+<ParamField path="PINCHTAB_URL" type="string" default="http://127.0.0.1:9867">
+  Server URL for CLI commands. Override to connect to a remote server.
+  
+  ```bash
+  export PINCHTAB_URL=http://192.168.1.100:9867
+  pinchtab snap
+  ```
+</ParamField>
+
+<ParamField path="BRIDGE_PORT" type="string" default="9867">
+  Server port. Used when starting the server and for CLI connections.
+  
+  ```bash
+  export BRIDGE_PORT=9868
+  pinchtab  # Starts on port 9868
+  ```
+</ParamField>
+
+<ParamField path="BRIDGE_BIND" type="string" default="127.0.0.1">
+  Bind address for the server.
+  
+  ```bash
+  export BRIDGE_BIND=0.0.0.0  # Listen on all interfaces
+  pinchtab
+  ```
+</ParamField>
+
+### Authentication
+
+<ParamField path="PINCHTAB_TOKEN" type="string">
+  Authentication token for CLI commands. Sent as `Authorization: Bearer` header.
+  
+  ```bash
+  export PINCHTAB_TOKEN=sk_your_secret_token
+  pinchtab snap
+  ```
+</ParamField>
+
+<ParamField path="BRIDGE_TOKEN" type="string">
+  Server-side authentication token. Clients must provide this token to access the API.
+  
+  ```bash
+  export BRIDGE_TOKEN=sk_server_secret
+  pinchtab  # Server requires this token from clients
+  ```
+</ParamField>
+
+### Browser Configuration
+
+<ParamField path="BRIDGE_HEADLESS" type="boolean" default="true">
+  Run Chrome in headless mode. Set to `false` or `0` to show the browser window.
+  
+  ```bash
+  export BRIDGE_HEADLESS=false
+  pinchtab
+  ```
+  
+  Accepted values: `true`, `false`, `1`, `0`, `yes`, `no`, `on`, `off`
+</ParamField>
+
+<ParamField path="CHROME_BIN" type="string">
+  Path to Chrome/Chromium binary. Auto-detected if not set.
+  
+  ```bash
+  export CHROME_BIN=/Applications/Google\ Chrome.app/Contents/MacOS/Google\ Chrome
+  pinchtab
+  ```
+</ParamField>
+
+<ParamField path="CHROME_FLAGS" type="string">
+  Additional Chrome launch flags.
+  
+  ```bash
+  export CHROME_FLAGS="--disable-gpu --no-sandbox"
+  pinchtab
+  ```
+</ParamField>
+
+<ParamField path="BRIDGE_CHROME_VERSION" type="string" default="144.0.7559.133">
+  Chrome version to download if not found locally.
+  
+  ```bash
+  export BRIDGE_CHROME_VERSION=130.0.6723.58
+  pinchtab
+  ```
+</ParamField>
+
+### State and Profiles
+
+<ParamField path="BRIDGE_STATE_DIR" type="string" default="~/.pinchtab">
+  Directory for storing PinchTab state, profiles, and browser data.
+  
+  ```bash
+  export BRIDGE_STATE_DIR=/var/lib/pinchtab
+  pinchtab
+  ```
+</ParamField>
+
+<ParamField path="BRIDGE_PROFILE" type="string" default="~/.pinchtab/chrome-profile">
+  Chrome user data directory (profile).
+  
+  ```bash
+  export BRIDGE_PROFILE=/tmp/chrome-profile
+  pinchtab
+  ```
+</ParamField>
+
+<ParamField path="BRIDGE_NO_RESTORE" type="boolean" default="false">
+  Don't restore tabs from previous session.
+  
+  ```bash
+  export BRIDGE_NO_RESTORE=true
+  pinchtab
+  ```
+</ParamField>
+
+### Instance Management
+
+<ParamField path="INSTANCE_PORT_START" type="integer" default="9868">
+  Starting port for managed instances.
+  
+  ```bash
+  export INSTANCE_PORT_START=10000
+  pinchtab
+  ```
+</ParamField>
+
+<ParamField path="INSTANCE_PORT_END" type="integer" default="9968">
+  Ending port for managed instances.
+  
+  ```bash
+  export INSTANCE_PORT_END=10100
+  pinchtab
+  ```
+</ParamField>
+
+### Performance and Limits
+
+<ParamField path="BRIDGE_MAX_TABS" type="integer" default="20">
+  Maximum number of tabs per instance.
+  
+  ```bash
+  export BRIDGE_MAX_TABS=50
+  pinchtab
+  ```
+</ParamField>
+
+<ParamField path="BRIDGE_BLOCK_IMAGES" type="boolean" default="false">
+  Block image loading by default (improves performance).
+  
+  ```bash
+  export BRIDGE_BLOCK_IMAGES=true
+  pinchtab
+  ```
+</ParamField>
+
+<ParamField path="BRIDGE_BLOCK_MEDIA" type="boolean" default="false">
+  Block video and audio loading.
+  
+  ```bash
+  export BRIDGE_BLOCK_MEDIA=true
+  pinchtab
+  ```
+</ParamField>
+
+<ParamField path="BRIDGE_BLOCK_ADS" type="boolean" default="false">
+  Block known ad domains.
+  
+  ```bash
+  export BRIDGE_BLOCK_ADS=true
+  pinchtab
+  ```
+</ParamField>
+
+<ParamField path="BRIDGE_NO_ANIMATIONS" type="boolean" default="false">
+  Disable CSS animations and transitions.
+  
+  ```bash
+  export BRIDGE_NO_ANIMATIONS=true
+  pinchtab
+  ```
+</ParamField>
+
+### Stealth and Fingerprinting
+
+<ParamField path="BRIDGE_STEALTH" type="string" default="light">
+  Stealth level for bot detection evasion. Options: `light`, `medium`, `aggressive`.
+  
+  ```bash
+  export BRIDGE_STEALTH=aggressive
+  pinchtab
+  ```
+</ParamField>
+
+<ParamField path="BRIDGE_USER_AGENT" type="string">
+  Custom user agent string.
+  
+  ```bash
+  export BRIDGE_USER_AGENT="Mozilla/5.0 (Windows NT 10.0; Win64; x64) Chrome/120.0.0.0"
+  pinchtab
+  ```
+</ParamField>
+
+<ParamField path="BRIDGE_TIMEZONE" type="string">
+  Override timezone for the browser.
+  
+  ```bash
+  export BRIDGE_TIMEZONE="America/New_York"
+  pinchtab
+  ```
+</ParamField>
+
+### CDP Connection
+
+<ParamField path="CDP_URL" type="string">
+  Connect to an existing Chrome DevTools Protocol endpoint instead of launching Chrome.
+  
+  ```bash
+  export CDP_URL=ws://localhost:9222/devtools/browser/abc123
+  pinchtab
+  ```
+</ParamField>
+
+<ParamField path="BRIDGE_ONLY" type="string">
+  Internal flag used by orchestrator to spawn bridge-only instances.
+  
+  ```bash
+  # DO NOT set manually - used internally
+  export BRIDGE_ONLY=1
+  ```
+</ParamField>
+
+## Configuration File
+
+Create a JSON configuration file at `~/.pinchtab/config.json`:
+
+### Initialize Config
+
+```bash
+pinchtab config init
+```
+
+This creates `~/.pinchtab/config.json` with defaults:
+
+```json
+{
+  "port": "9867",
+  "instancePortStart": 9868,
+  "instancePortEnd": 9968,
+  "stateDir": "/home/user/.pinchtab",
+  "profileDir": "/home/user/.pinchtab/chrome-profile",
+  "headless": true,
+  "noRestore": false,
+  "timeoutSec": 15,
+  "navigateSec": 30
+}
+```
+
+### Show Current Config
+
+```bash
+pinchtab config show
+```
+
+Output:
+```
+Current configuration:
+  Port:       9867
+  CDP URL:    
+  Token:      (none)
+  State Dir:  /home/user/.pinchtab
+  Profile:    /home/user/.pinchtab/chrome-profile
+  Headless:   true
+  Max Tabs:   20
+  No Restore: false
+  Timeouts:   action=30s navigate=1m0s
+```
+
+### Configuration File Schema
+
+<ParamField path="port" type="string" default="9867">
+  Server port (overridden by `BRIDGE_PORT`)
+</ParamField>
+
+<ParamField path="instancePortStart" type="integer" default="9868">
+  Starting port for instances (overridden by `INSTANCE_PORT_START`)
+</ParamField>
+
+<ParamField path="instancePortEnd" type="integer" default="9968">
+  Ending port for instances (overridden by `INSTANCE_PORT_END`)
+</ParamField>
+
+<ParamField path="cdpUrl" type="string">
+  Chrome DevTools Protocol endpoint (overridden by `CDP_URL`)
+</ParamField>
+
+<ParamField path="token" type="string">
+  Authentication token (overridden by `BRIDGE_TOKEN`)
+</ParamField>
+
+<ParamField path="stateDir" type="string">
+  State directory path (overridden by `BRIDGE_STATE_DIR`)
+</ParamField>
+
+<ParamField path="profileDir" type="string">
+  Chrome profile directory (overridden by `BRIDGE_PROFILE`)
+</ParamField>
+
+<ParamField path="headless" type="boolean" default="true">
+  Run headless (overridden by `BRIDGE_HEADLESS`)
+</ParamField>
+
+<ParamField path="noRestore" type="boolean" default="false">
+  Don't restore tabs (overridden by `BRIDGE_NO_RESTORE`)
+</ParamField>
+
+<ParamField path="maxTabs" type="integer" default="20">
+  Maximum tabs per instance (overridden by `BRIDGE_MAX_TABS`)
+</ParamField>
+
+<ParamField path="timeoutSec" type="integer" default="15">
+  Action timeout in seconds
+</ParamField>
+
+<ParamField path="navigateSec" type="integer" default="30">
+  Navigation timeout in seconds
+</ParamField>
+
+### Configuration Priority
+
+Settings are applied in this order (later overrides earlier):
+
+1. Built-in defaults
+2. Configuration file (`~/.pinchtab/config.json`)
+3. Environment variables
+4. Command-line flags (where applicable)
+
+### Example: Production Setup with Auth
+
+```json ~/.pinchtab/config.json
+{
+  "port": "9867",
+  "token": "sk_prod_your_secret_token_here",
+  "headless": true,
+  "stateDir": "/var/lib/pinchtab",
+  "profileDir": "/var/lib/pinchtab/chrome-profile",
+  "maxTabs": 50,
+  "timeoutSec": 30,
+  "navigateSec": 60
+}
+```
+
+Start the server:
+```bash
+pinchtab
+```
+
+CLI usage:
+```bash
+export PINCHTAB_TOKEN=sk_prod_your_secret_token_here
+pinchtab snap
+```
+
+### Example: Development Setup
+
+```bash
+# .env file
+export BRIDGE_PORT=9867
+export BRIDGE_HEADLESS=false
+export BRIDGE_BLOCK_ADS=true
+export BRIDGE_MAX_TABS=10
+
+# Source and run
+source .env
+pinchtab
+```
+
+## Custom Config Location
+
+Override config file location:
+
+```bash
+export BRIDGE_CONFIG=/etc/pinchtab/config.json
+pinchtab
+```
+
+## Security Best Practices
+
+<Warning>
+Never commit tokens or secrets to version control. Use environment variables or secure config files with restricted permissions.
+</Warning>
+
+```bash
+# Restrict config file permissions
+chmod 600 ~/.pinchtab/config.json
+
+# Use environment variables for tokens
+export BRIDGE_TOKEN=$(cat /run/secrets/pinchtab-token)
+pinchtab
+```
+
+## Next Steps
+
+<CardGroup cols={2}>
+  <Card title="Server Commands" icon="server" href="/cli/server">
+    Start and manage the PinchTab server
+  </Card>
+  
+  <Card title="Instance Management" icon="layer-group" href="/cli/instance">
+    Launch and control browser instances
+  </Card>
+</CardGroup>

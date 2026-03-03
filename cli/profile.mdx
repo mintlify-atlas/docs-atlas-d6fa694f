@@ -1,0 +1,443 @@
+---
+title: 'Profile Commands'
+description: 'Manage browser profiles and persistent sessions'
+icon: 'user'
+---
+
+# Profile Management
+
+Profiles are isolated browser sessions with separate cookies, localStorage, cache, and browsing history. Each profile maintains its own Chrome user data directory.
+
+## List Profiles
+
+```bash
+pinchtab profiles
+```
+
+Output:
+```
+👤 default
+👤 my-profile
+👤 automation-bot
+```
+
+### JSON Output
+
+Profiles endpoint returns JSON:
+
+```bash
+curl http://localhost:9867/profiles
+```
+
+```json
+{
+  "profiles": [
+    {"name": "default"},
+    {"name": "my-profile"},
+    {"name": "automation-bot"}
+  ]
+}
+```
+
+Filter with `jq`:
+
+```bash
+curl -s http://localhost:9867/profiles | jq -r '.profiles[] | .name'
+```
+
+## Connect to Profile
+
+Get the URL of a running profile instance:
+
+```bash
+pinchtab connect <profile-name>
+```
+
+Example:
+```bash
+pinchtab connect my-profile
+```
+
+Output:
+```
+http://localhost:9868
+```
+
+This returns the base URL for the profile's instance. If the profile isn't running, it will show an error:
+
+```
+profile "my-profile" not running (no instance)
+```
+
+### JSON Output
+
+```bash
+pinchtab connect my-profile --json
+```
+
+Output:
+```json
+{
+  "profile": "my-profile",
+  "id": "inst_abc123",
+  "status": "running",
+  "port": "9868",
+  "url": "http://localhost:9868"
+}
+```
+
+### Custom Dashboard URL
+
+Connect to a remote dashboard:
+
+```bash
+pinchtab connect my-profile --dashboard http://192.168.1.100:9867
+```
+
+Or set via environment:
+
+```bash
+export PINCHTAB_DASHBOARD_URL=http://192.168.1.100:9867
+pinchtab connect my-profile
+```
+
+## Create Profiles
+
+Profiles are created automatically when you launch an instance with a profile name:
+
+```bash
+pinchtab instance launch --profileId my-new-profile
+```
+
+Or create profile directory manually:
+
+```bash
+mkdir -p ~/.pinchtab/profiles/my-new-profile/Default
+```
+
+## Profile Directory Structure
+
+Profiles are stored in `~/.pinchtab/profiles/` (or `$BRIDGE_STATE_DIR/profiles/`):
+
+```
+~/.pinchtab/profiles/
+├── default/
+│   ├── Default/              # Chrome user data
+│   │   ├── Cookies
+│   │   ├── Local Storage/
+│   │   ├── Cache/
+│   │   └── ...
+│   └── history.json          # PinchTab action history
+├── my-profile/
+│   ├── Default/
+│   └── history.json
+└── automation-bot/
+    ├── Default/
+    └── history.json
+```
+
+## Profile Instances
+
+Each profile can have one running instance at a time:
+
+```bash
+# Launch instance with profile
+INST=$(pinchtab instance launch --profileId my-profile --mode headed | jq -r .id)
+
+# Connect to the profile
+URL=$(pinchtab connect my-profile)
+
+# Use the profile instance
+curl $URL/snapshot
+
+# Stop instance
+pinchtab instance stop $INST
+```
+
+## Use Cases
+
+### Separate User Sessions
+
+Maintain different logged-in sessions:
+
+```bash
+# Profile for user A
+pinchtab instance launch --profileId user-a
+# Navigate and log in as user A
+
+# Profile for user B  
+pinchtab instance launch --profileId user-b
+# Navigate and log in as user B
+
+# Both sessions persist independently
+```
+
+### Testing Scenarios
+
+```bash
+# Clean profile for each test
+for test in test1 test2 test3; do
+  # Remove old profile data
+  rm -rf ~/.pinchtab/profiles/$test
+  
+  # Launch fresh instance
+  INST=$(pinchtab instance launch --profileId $test | jq -r .id)
+  
+  # Run test
+  URL=$(pinchtab connect $test)
+  curl -X POST $URL/navigate -d '{"url": "https://example.com"}'
+  
+  # Cleanup
+  pinchtab instance stop $INST
+done
+```
+
+### Persistent Automation
+
+Keep login sessions across runs:
+
+```bash
+# Day 1: Log in and save session
+pinchtab instance launch --profileId github-bot --mode headed
+URL=$(pinchtab connect github-bot)
+
+# Navigate and log in (manual or automated)
+curl -X POST $URL/navigate -d '{"url": "https://github.com/login"}'
+# ... perform login ...
+
+# Stop instance (cookies/session saved)
+pinchtab instance stop $(pinchtab instances | jq -r '.[] | select(.id) | .id' | head -1)
+
+# Day 2: Resume with existing session
+pinchtab instance launch --profileId github-bot
+URL=$(pinchtab connect github-bot)
+curl -X POST $URL/navigate -d '{"url": "https://github.com"}'
+# Already logged in!
+```
+
+## Profile History
+
+PinchTab tracks actions for each profile in `history.json`:
+
+```bash
+cat ~/.pinchtab/profiles/my-profile/history.json
+```
+
+```json
+[
+  {
+    "timestamp": "2024-03-15T10:30:00Z",
+    "method": "POST",
+    "endpoint": "/navigate",
+    "url": "https://example.com",
+    "tabId": "tab_abc123",
+    "durationMs": 1234,
+    "status": 200
+  },
+  {
+    "timestamp": "2024-03-15T10:30:05Z",
+    "method": "GET",
+    "endpoint": "/snapshot",
+    "url": "https://example.com",
+    "tabId": "tab_abc123",
+    "durationMs": 156,
+    "status": 200
+  }
+]
+```
+
+## Profile API Endpoints
+
+### List Profiles
+
+```bash
+curl http://localhost:9867/profiles
+```
+
+### Get Profile Instance Status
+
+```bash
+curl http://localhost:9867/profiles/my-profile/instance
+```
+
+```json
+{
+  "name": "my-profile",
+  "running": true,
+  "status": "running",
+  "port": "9868",
+  "id": "inst_abc123"
+}
+```
+
+If not running:
+
+```json
+{
+  "name": "my-profile",
+  "running": false,
+  "status": "no instance",
+  "port": "",
+  "id": ""
+}
+```
+
+## Delete Profile
+
+To delete a profile:
+
+1. Stop any running instance using the profile
+2. Remove the profile directory
+
+```bash
+# Find instance using profile
+INST=$(pinchtab instances | jq -r '.[] | select(.id) | .id' | head -1)
+
+# Stop instance
+pinchtab instance stop $INST
+
+# Delete profile data
+rm -rf ~/.pinchtab/profiles/my-profile
+```
+
+<Warning>
+Deleting a profile removes all cookies, localStorage, cache, and browsing history. This cannot be undone.
+</Warning>
+
+## Default Profile
+
+The `default` profile is created automatically on first run:
+
+```bash
+pinchtab instance launch
+# Uses "default" profile if no --profileId specified
+```
+
+Connect to default profile:
+
+```bash
+pinchtab connect default
+```
+
+## Profile Configuration
+
+Set default profile for auto-launch:
+
+```bash
+export PINCHTAB_AUTO_LAUNCH=true
+export PINCHTAB_DEFAULT_PROFILE=my-profile
+pinchtab
+```
+
+The server will automatically launch an instance with `my-profile` on startup.
+
+## Profile Location
+
+Change profile directory:
+
+```bash
+export BRIDGE_STATE_DIR=/var/lib/pinchtab
+pinchtab
+# Profiles: /var/lib/pinchtab/profiles/
+```
+
+Or in `~/.pinchtab/config.json`:
+
+```json
+{
+  "stateDir": "/var/lib/pinchtab"
+}
+```
+
+## Sharing Profiles
+
+<Warning>
+Profile directories contain sensitive data (cookies, passwords, session tokens). Never commit profiles to version control or share them publicly.
+</Warning>
+
+To backup a profile:
+
+```bash
+tar -czf my-profile-backup.tar.gz -C ~/.pinchtab/profiles my-profile
+```
+
+To restore:
+
+```bash
+tar -xzf my-profile-backup.tar.gz -C ~/.pinchtab/profiles
+```
+
+## Troubleshooting
+
+### Profile Not Found
+
+```
+profile "my-profile" not running (no instance)
+```
+
+Solution:
+
+```bash
+# Launch instance with the profile
+pinchtab instance launch --profileId my-profile
+
+# Then connect
+pinchtab connect my-profile
+```
+
+### Profile Directory Permissions
+
+```
+permission denied: ~/.pinchtab/profiles/my-profile
+```
+
+Solution:
+
+```bash
+# Fix permissions
+chmod -R 755 ~/.pinchtab/profiles
+```
+
+### Corrupted Profile
+
+If Chrome crashes or behaves unexpectedly:
+
+```bash
+# Stop instance
+pinchtab instance stop <instance-id>
+
+# Remove corrupted data
+rm -rf ~/.pinchtab/profiles/my-profile/Default/Singleton*
+
+# Restart
+pinchtab instance launch --profileId my-profile
+```
+
+### Multiple Instances Same Profile
+
+```
+profile "my-profile" already in use by instance inst_abc123
+```
+
+PinchTab prevents multiple instances from using the same profile simultaneously. Stop the existing instance first:
+
+```bash
+pinchtab instance stop inst_abc123
+pinchtab instance launch --profileId my-profile
+```
+
+## Next Steps
+
+<CardGroup cols={2}>
+  <Card title="Instance Management" icon="layer-group" href="/cli/instance">
+    Launch instances with profiles
+  </Card>
+  
+  <Card title="Tab Management" icon="window-restore" href="/cli/tab">
+    Control tabs in profile instances
+  </Card>
+  
+  <Card title="Navigation" icon="compass" href="/cli/navigate">
+    Navigate profile sessions
+  </Card>
+</CardGroup>

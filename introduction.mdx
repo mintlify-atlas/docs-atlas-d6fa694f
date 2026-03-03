@@ -1,0 +1,256 @@
+---
+title: Introduction to PinchTab
+description: Browser control for AI agents - A standalone HTTP server that gives AI agents direct control over Chrome
+---
+
+<img className="block dark:hidden" src="/images/pinchtab-light.svg" alt="PinchTab" />
+<img className="hidden dark:block" src="/images/pinchtab-dark.svg" alt="PinchTab" />
+
+## What is PinchTab?
+
+PinchTab is a **standalone HTTP server** that gives AI agents direct control over a Chrome browser. It's a 12MB Go binary that provides token-efficient browser automation via HTTP API or CLI.
+
+<CardGroup cols={2}>
+  <Card title="Token-Efficient" icon="coins">
+    800 tokens/page with text extraction - 5-13x cheaper than screenshots
+  </Card>
+  <Card title="Multi-Instance" icon="clone">
+    Run multiple parallel Chrome processes with isolated profiles
+  </Card>
+  <Card title="Self-Contained" icon="box">
+    12MB binary, no external dependencies required
+  </Card>
+  <Card title="Accessibility-First" icon="universal-access">
+    Stable element refs instead of fragile coordinates
+  </Card>
+</CardGroup>
+
+## Key Features
+
+<AccordionGroup>
+  <Accordion title="CLI or HTTP API" icon="terminal">
+    Control via command-line or HTTP API. Use `curl`, Python, Node.js, or any HTTP client.
+    
+    ```bash
+    # CLI
+    pinchtab instance launch
+    
+    # HTTP API
+    curl -X POST http://localhost:9867/instances/launch
+    ```
+  </Accordion>
+
+  <Accordion title="Headless or Headed" icon="display">
+    Run without a window (headless) or with visible Chrome (headed) for debugging.
+    
+    ```bash
+    # Headless (default, faster)
+    pinchtab instance launch --mode headless
+    
+    # Headed (visible window)
+    pinchtab instance launch --mode headed
+    ```
+  </Accordion>
+
+  <Accordion title="Persistent Profiles" icon="user">
+    Browser profiles preserve cookies, sessions, and auth across instance restarts. Log in once, stay logged in.
+    
+    ```bash
+    # Create persistent profile
+    pinchtab profile create work
+    
+    # Launch instance with profile
+    curl -X POST http://localhost:9867/instances/start \
+      -d '{"profileId":"prof_278be873"}'
+    ```
+  </Accordion>
+
+  <Accordion title="Multi-Instance Isolation" icon="layer-group">
+    Run multiple instances in parallel with complete isolation - no shared state, no cookie leakage.
+    
+    ```bash
+    # Create 3 independent instances
+    for i in 1 2 3; do
+      pinchtab instance launch --mode headless
+    done
+    
+    # Each instance gets auto-allocated port: 9868, 9869, 9870
+    ```
+  </Accordion>
+</AccordionGroup>
+
+## Why PinchTab?
+
+<CardGroup cols={2}>
+  <Card title="For AI Agents" icon="robot">
+    Designed specifically for AI-driven browser automation with token-efficient snapshots and stable element references.
+  </Card>
+  <Card title="For Developers" icon="code">
+    Simple HTTP API, CLI tools, and comprehensive documentation. Start automating in 5 minutes.
+  </Card>
+  <Card title="For Scale" icon="chart-line">
+    Multi-instance architecture with auto-allocated ports (9868-9968). Run hundreds of parallel browsers.
+  </Card>
+  <Card title="For Security" icon="shield">
+    Profile isolation, stealth mode, and secure token authentication for remote access.
+  </Card>
+</CardGroup>
+
+## How It Works
+
+PinchTab consists of four core entities working together:
+
+```text
+PinchTab Orchestrator (HTTP server on port 9867)
+  │
+  ├── Instance 1 (inst_0a89a5bb, port 9868, temp profile)
+  │     ├── Tab 1 (tab_xyz123, https://example.com)
+  │     ├── Tab 2 (tab_xyz124, https://google.com)
+  │     └── Tab 3 (tab_xyz125, https://github.com)
+  │
+  ├── Instance 2 (inst_1b9a5dcc, port 9869, profile: work)
+  │     ├── Tab 1 (tab_abc001, internal dashboard, logged in)
+  │     └── Tab 2 (tab_abc002, internal docs)
+  │
+  └── Instance 3 (inst_2c8a5eef, port 9870, profile: personal)
+        ├── Tab 1 (tab_def001, gmail.com)
+        └── Tab 2 (tab_def002, bank.com)
+```
+
+<Note>
+The **orchestrator** manages all instances and routes requests. Each **instance** is a separate Chrome process with optional **profile** for persistent state. Each **tab** is a webpage you navigate and interact with.
+</Note>
+
+## Quick Example
+
+Here's a complete browser automation workflow in just a few commands:
+
+<Steps>
+  <Step title="Start the orchestrator">
+    ```bash
+    pinchtab
+    ```
+    
+    Expected output:
+    ```
+    🦀 Pinchtab Dashboard port=9867
+    dashboard ready url=http://localhost:9867/dashboard
+    ```
+  </Step>
+
+  <Step title="Create a Chrome instance">
+    ```bash
+    # Create headless instance
+    INST=$(pinchtab instance launch --mode headless | jq -r '.id')
+    echo "Instance: $INST"
+    
+    # Wait for Chrome to initialize
+    sleep 2
+    ```
+  </Step>
+
+  <Step title="Navigate to a website">
+    ```bash
+    # Create tab and navigate
+    TAB_ID=$(curl -s -X POST http://localhost:9867/instances/$INST/tabs/open \
+      -H "Content-Type: application/json" \
+      -d '{"url":"https://example.com"}' | jq -r '.id')
+    ```
+  </Step>
+
+  <Step title="Get page content">
+    ```bash
+    # Get page structure with interactive elements
+    curl http://localhost:9867/tabs/$TAB_ID/snapshot | jq '.nodes | map({ref, role, name})'
+    
+    # Extract text content
+    curl http://localhost:9867/tabs/$TAB_ID/text | jq '.text'
+    ```
+  </Step>
+
+  <Step title="Interact with the page">
+    ```bash
+    # Click a button (ref from snapshot)
+    curl -X POST http://localhost:9867/tabs/$TAB_ID/action \
+      -H "Content-Type: application/json" \
+      -d '{"kind":"click","ref":"e5"}'
+    
+    # Fill an input field
+    curl -X POST http://localhost:9867/tabs/$TAB_ID/action \
+      -H "Content-Type: application/json" \
+      -d '{"kind":"fill","ref":"e3","text":"user@example.com"}'
+    ```
+  </Step>
+</Steps>
+
+<Tip>
+Check out the [Quick Start](/quickstart) guide to get PinchTab running in 5 minutes, or explore [Core Concepts](/core-concepts) to understand the mental model.
+</Tip>
+
+## Use Cases
+
+<CardGroup cols={2}>
+  <Card title="AI Agent Automation" icon="wand-magic-sparkles" href="/guides/ai-agents">
+    Build AI agents that can browse, click, fill forms, and extract data from any website.
+  </Card>
+  
+  <Card title="Web Scraping" icon="spider-web" href="/guides/web-scraping">
+    Extract text efficiently (~800 tokens/page) instead of expensive screenshots (10,000+ tokens).
+  </Card>
+  
+  <Card title="End-to-End Testing" icon="vial" href="/guides/testing">
+    Automate browser testing with stable element references and multi-instance parallelization.
+  </Card>
+  
+  <Card title="Multi-Account Management" icon="users" href="/guides/multi-account">
+    Manage multiple user sessions with isolated profiles and persistent authentication.
+  </Card>
+</CardGroup>
+
+## Comparison
+
+| Feature | PinchTab | Puppeteer | Playwright | Selenium |
+|---------|----------|-----------|------------|----------|
+| **Token efficiency** | ✅ 800 tokens/page | ❌ 10k+ tokens | ❌ 10k+ tokens | ❌ 10k+ tokens |
+| **HTTP API** | ✅ Native | ❌ Library only | ❌ Library only | ❌ Library only |
+| **Multi-instance** | ✅ Auto-managed | ⚠️ Manual | ⚠️ Manual | ⚠️ Manual |
+| **Persistent profiles** | ✅ Built-in | ⚠️ Manual | ⚠️ Manual | ⚠️ Manual |
+| **Binary size** | ✅ 12MB | ❌ Node deps | ❌ Node deps | ❌ Java deps |
+| **Stealth mode** | ✅ Built-in | ⚠️ Plugins | ✅ Built-in | ❌ Not available |
+| **Element stability** | ✅ Accessibility refs | ❌ Selectors | ❌ Selectors | ❌ XPath |
+
+<Note>
+PinchTab is specifically designed for AI agents and token efficiency, making it ideal for LLM-driven automation workflows.
+</Note>
+
+## Next Steps
+
+<CardGroup cols={2}>
+  <Card title="Quick Start" icon="rocket" href="/quickstart">
+    Get PinchTab running in 5 minutes with installation and first commands
+  </Card>
+  
+  <Card title="Core Concepts" icon="book" href="/core-concepts">
+    Understand orchestrator, instances, profiles, and tabs
+  </Card>
+  
+  <Card title="API Reference" icon="code" href="/api-reference/instances">
+    Complete HTTP API documentation with all endpoints
+  </Card>
+  
+  <Card title="Examples" icon="lightbulb" href="/examples/scraping">
+    Real-world examples and code snippets
+  </Card>
+</CardGroup>
+
+## Community & Support
+
+<CardGroup cols={2}>
+  <Card title="GitHub" icon="github" href="https://github.com/pinchtab/pinchtab">
+    Star the repo, report issues, contribute code
+  </Card>
+  
+  <Card title="Discussions" icon="comments" href="https://github.com/pinchtab/pinchtab/discussions">
+    Ask questions, share use cases, get help
+  </Card>
+</CardGroup>

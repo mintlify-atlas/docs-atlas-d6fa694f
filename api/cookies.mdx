@@ -1,0 +1,539 @@
+---
+title: 'Cookies API'
+description: 'Get and set browser cookies'
+---
+
+## Overview
+
+The Cookies API allows you to:
+
+- Get cookies for a URL or tab
+- Set cookies programmatically
+- Manage cookie attributes (domain, path, expiry)
+- Filter cookies by name
+
+## Get Cookies
+
+Retrieve cookies for a tab or URL.
+
+```http
+GET /tabs/{id}/cookies
+```
+
+<CodeGroup>
+```bash All Cookies
+curl "http://localhost:9867/tabs/tab_abc123/cookies" | jq .
+```
+
+```bash Filter by Name
+curl "http://localhost:9867/tabs/tab_abc123/cookies?name=session_id" | jq .
+```
+
+```bash Specific URL
+curl "http://localhost:9867/tabs/tab_abc123/cookies?url=https://example.com" | jq .
+```
+
+```python Python
+import requests
+
+# Get all cookies
+resp = requests.get(
+    "http://localhost:9867/tabs/tab_abc123/cookies"
+)
+data = resp.json()
+
+print(f"URL: {data['url']}")
+print(f"Cookies: {data['count']}\n")
+
+for cookie in data["cookies"]:
+    print(f"{cookie['name']}: {cookie['value']}")
+```
+
+```javascript JavaScript
+const resp = await fetch(
+  "http://localhost:9867/tabs/tab_abc123/cookies"
+);
+const data = await resp.json();
+
+console.log(`Found ${data.count} cookies:`);
+data.cookies.forEach(c => {
+  console.log(`${c.name}: ${c.value}`);
+});
+```
+</CodeGroup>
+
+### Query Parameters
+
+<ParamField query="url" type="string">
+  URL to get cookies for (defaults to tab's current URL)
+</ParamField>
+
+<ParamField query="name" type="string">
+  Filter to specific cookie name
+</ParamField>
+
+### Response (200 OK)
+
+```json
+{
+  "url": "https://example.com",
+  "cookies": [
+    {
+      "name": "session_id",
+      "value": "abc123def456",
+      "domain": "example.com",
+      "path": "/",
+      "secure": true,
+      "httpOnly": true,
+      "sameSite": "Lax",
+      "expires": 1735689600
+    },
+    {
+      "name": "user_prefs",
+      "value": "dark_mode=true",
+      "domain": ".example.com",
+      "path": "/",
+      "secure": false,
+      "httpOnly": false,
+      "sameSite": "None"
+    }
+  ],
+  "count": 2
+}
+```
+
+### Response Fields
+
+<ResponseField name="url" type="string" required>
+  URL for which cookies were retrieved
+</ResponseField>
+
+<ResponseField name="cookies" type="array" required>
+  Array of cookie objects
+</ResponseField>
+
+<ResponseField name="count" type="integer" required>
+  Number of cookies
+</ResponseField>
+
+### Cookie Fields
+
+<ResponseField name="name" type="string" required>
+  Cookie name
+</ResponseField>
+
+<ResponseField name="value" type="string" required>
+  Cookie value
+</ResponseField>
+
+<ResponseField name="domain" type="string" required>
+  Cookie domain
+</ResponseField>
+
+<ResponseField name="path" type="string" required>
+  Cookie path
+</ResponseField>
+
+<ResponseField name="secure" type="boolean" required>
+  HTTPS only flag
+</ResponseField>
+
+<ResponseField name="httpOnly" type="boolean" required>
+  JavaScript access blocked flag
+</ResponseField>
+
+<ResponseField name="sameSite" type="string" required>
+  SameSite attribute: `Strict`, `Lax`, or `None`
+</ResponseField>
+
+<ResponseField name="expires" type="number">
+  Expiration timestamp (Unix epoch)
+</ResponseField>
+
+---
+
+## Set Cookies
+
+Set one or more cookies for a tab.
+
+```http
+POST /tabs/{id}/cookies
+```
+
+<CodeGroup>
+```bash Single Cookie
+curl -X POST http://localhost:9867/tabs/tab_abc123/cookies \
+  -H "Content-Type: application/json" \
+  -d '{
+    "url": "https://example.com",
+    "cookies": [
+      {
+        "name": "session_id",
+        "value": "abc123",
+        "domain": "example.com",
+        "path": "/",
+        "secure": true,
+        "httpOnly": true,
+        "sameSite": "Lax"
+      }
+    ]
+  }'
+```
+
+```bash Multiple Cookies
+curl -X POST http://localhost:9867/tabs/tab_abc123/cookies \
+  -H "Content-Type: application/json" \
+  -d '{
+    "url": "https://example.com",
+    "cookies": [
+      {"name": "session_id", "value": "abc123"},
+      {"name": "user_id", "value": "12345"},
+      {"name": "theme", "value": "dark"}
+    ]
+  }'
+```
+
+```python Python
+import requests
+
+# Set multiple cookies
+resp = requests.post(
+    "http://localhost:9867/tabs/tab_abc123/cookies",
+    json={
+        "url": "https://example.com",
+        "cookies": [
+            {
+                "name": "session_id",
+                "value": "abc123",
+                "secure": True,
+                "httpOnly": True
+            },
+            {
+                "name": "user_prefs",
+                "value": "dark_mode=true",
+                "path": "/"
+            }
+        ]
+    }
+)
+print(resp.json())
+```
+
+```javascript JavaScript
+const resp = await fetch(
+  "http://localhost:9867/tabs/tab_abc123/cookies",
+  {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({
+      url: "https://example.com",
+      cookies: [
+        {
+          name: "session_id",
+          value: "abc123",
+          secure: true,
+          httpOnly: true
+        }
+      ]
+    })
+  }
+);
+const result = await resp.json();
+console.log(`Set ${result.set} cookies`);
+```
+</CodeGroup>
+
+### Request Body
+
+<ParamField path="url" type="string" required>
+  URL to set cookies for
+</ParamField>
+
+<ParamField path="cookies" type="array" required>
+  Array of cookie objects to set
+</ParamField>
+
+### Cookie Object
+
+<ParamField path="name" type="string" required>
+  Cookie name
+</ParamField>
+
+<ParamField path="value" type="string" required>
+  Cookie value
+</ParamField>
+
+<ParamField path="domain" type="string">
+  Cookie domain (defaults from URL)
+</ParamField>
+
+<ParamField path="path" type="string">
+  Cookie path (default: `/`)
+</ParamField>
+
+<ParamField path="secure" type="boolean" default="false">
+  HTTPS only
+</ParamField>
+
+<ParamField path="httpOnly" type="boolean" default="false">
+  Block JavaScript access
+</ParamField>
+
+<ParamField path="sameSite" type="string">
+  SameSite attribute: `Strict`, `Lax`, or `None`
+</ParamField>
+
+<ParamField path="expires" type="number">
+  Expiration timestamp (Unix epoch)
+</ParamField>
+
+### Response (200 OK)
+
+```json
+{
+  "set": 2,
+  "failed": 0,
+  "total": 2
+}
+```
+
+---
+
+## Complete Example
+
+```python
+import requests
+import time
+
+BASE = "http://localhost:9867"
+
+# Start instance
+inst = requests.post(f"{BASE}/instances/start",
+    json={"mode": "headed"}).json()
+
+# Open tab
+tab = requests.post(f"{BASE}/instances/{inst['id']}/tabs/open",
+    json={"url": "https://example.com"}).json()
+
+tab_id = tab["tabId"]
+time.sleep(2)
+
+# Get existing cookies
+resp = requests.get(f"{BASE}/tabs/{tab_id}/cookies")
+cookies = resp.json()
+print(f"Existing cookies: {cookies['count']}\n")
+
+for cookie in cookies["cookies"]:
+    print(f"{cookie['name']}: {cookie['value']}")
+
+# Set new cookies
+resp = requests.post(f"{BASE}/tabs/{tab_id}/cookies", json={
+    "url": "https://example.com",
+    "cookies": [
+        {
+            "name": "custom_session",
+            "value": "my_session_token",
+            "secure": True,
+            "httpOnly": True,
+            "sameSite": "Lax"
+        },
+        {
+            "name": "user_preference",
+            "value": "dark_theme",
+            "path": "/"
+        }
+    ]
+})
+
+result = resp.json()
+print(f"\nSet {result['set']} new cookies")
+
+# Verify cookies were set
+resp = requests.get(f"{BASE}/tabs/{tab_id}/cookies")
+cookies = resp.json()
+print(f"\nTotal cookies now: {cookies['count']}")
+
+# Cleanup
+requests.post(f"{BASE}/instances/{inst['id']}/stop")
+```
+
+---
+
+## Cookie Management Example
+
+```python
+def get_cookie_by_name(tab_id, name, url=""):
+    """Get a specific cookie by name"""
+    resp = requests.get(
+        f"http://localhost:9867/tabs/{tab_id}/cookies",
+        params={"name": name, "url": url} if url else {"name": name}
+    )
+    cookies = resp.json()["cookies"]
+    return cookies[0] if cookies else None
+
+def set_session_cookie(tab_id, url, session_id):
+    """Set a session cookie"""
+    requests.post(
+        f"http://localhost:9867/tabs/{tab_id}/cookies",
+        json={
+            "url": url,
+            "cookies": [{
+                "name": "session_id",
+                "value": session_id,
+                "secure": True,
+                "httpOnly": True,
+                "sameSite": "Lax"
+            }]
+        }
+    )
+
+def export_cookies(tab_id, url=""):
+    """Export all cookies to dict"""
+    resp = requests.get(
+        f"http://localhost:9867/tabs/{tab_id}/cookies",
+        params={"url": url} if url else {}
+    )
+    return {c["name"]: c["value"] for c in resp.json()["cookies"]}
+
+def import_cookies(tab_id, url, cookies_dict):
+    """Import cookies from dict"""
+    cookies = [
+        {"name": name, "value": value}
+        for name, value in cookies_dict.items()
+    ]
+    requests.post(
+        f"http://localhost:9867/tabs/{tab_id}/cookies",
+        json={"url": url, "cookies": cookies}
+    )
+
+# Usage
+session = get_cookie_by_name(tab_id, "session_id")
+if session:
+    print(f"Session: {session['value']}")
+
+set_session_cookie(tab_id, "https://example.com", "new_session_token")
+
+cookies = export_cookies(tab_id)
+print(f"Exported {len(cookies)} cookies")
+```
+
+---
+
+## SameSite Attribute
+
+| Value | Description | Use Case |
+|-------|-------------|----------|
+| **Strict** | Only sent to same-site requests | Maximum security |
+| **Lax** | Sent on top-level navigation | Balanced security |
+| **None** | Sent on all requests | Cross-site scenarios (requires `secure: true`) |
+
+Example:
+```python
+# Strict (most secure)
+{"name": "token", "value": "abc", "sameSite": "Strict", "secure": True}
+
+# Lax (balanced)
+{"name": "session", "value": "xyz", "sameSite": "Lax", "secure": True}
+
+# None (cross-site, must be secure)
+{"name": "tracking", "value": "123", "sameSite": "None", "secure": True}
+```
+
+---
+
+## Error Handling
+
+### Tab Not Found (404)
+
+```bash
+curl "http://localhost:9867/tabs/nonexistent/cookies"
+```
+
+**Response:**
+```json
+{
+  "error": "tab not found",
+  "statusCode": 404
+}
+```
+
+### Invalid Cookie (400)
+
+```bash
+curl -X POST http://localhost:9867/tabs/tab_abc123/cookies \
+  -d '{"url":"https://example.com","cookies":[]}'
+```
+
+**Response:**
+```json
+{
+  "error": "cookies array is empty",
+  "statusCode": 400
+}
+```
+
+---
+
+## Best Practices
+
+### Always Specify URL
+
+```python
+# ✅ Good: Explicit URL
+requests.post(f"{BASE}/tabs/{tab_id}/cookies", json={
+    "url": "https://example.com",
+    "cookies": [...]
+})
+
+# ❌ Bad: Missing URL
+requests.post(f"{BASE}/tabs/{tab_id}/cookies", json={
+    "cookies": [...]
+})
+```
+
+### Use Secure Cookies
+
+```python
+# For HTTPS sites, always use secure cookies
+{
+    "name": "session",
+    "value": "token",
+    "secure": True,  # ← Important!
+    "httpOnly": True,
+    "sameSite": "Lax"
+}
+```
+
+### Set Expiration for Persistence
+
+```python
+import time
+
+# Expire in 7 days
+expire_time = int(time.time()) + (7 * 24 * 60 * 60)
+
+{
+    "name": "remember_me",
+    "value": "yes",
+    "expires": expire_time
+}
+```
+
+---
+
+## Next Steps
+
+<CardGroup cols={2}>
+  <Card title="Authentication" icon="lock" href="/api/authentication">
+    API authentication and security
+  </Card>
+  <Card title="Stealth Mode" icon="mask" href="/api/stealth">
+    Stealth and fingerprint management
+  </Card>
+  <Card title="Navigation" icon="compass" href="/api/navigation">
+    Navigate with cookies
+  </Card>
+  <Card title="Evaluation" icon="code" href="/api/evaluation">
+    Access cookies via JavaScript
+  </Card>
+</CardGroup>

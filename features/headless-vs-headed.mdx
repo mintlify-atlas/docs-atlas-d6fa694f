@@ -1,0 +1,499 @@
+---
+title: 'Headless vs Headed Mode'
+description: 'Choose between invisible automation and visible debugging'
+---
+
+PinchTab instances can run Chrome in two modes: **Headless** (no visible window) and **Headed** (visible browser window).
+
+## Quick Comparison
+
+<CardGroup cols={2}>
+  <Card title="Headless Mode" icon="eye-slash">
+    No visible window, fast, lightweight, perfect for production automation
+  </Card>
+  <Card title="Headed Mode" icon="eye">
+    Visible browser window, slower, debuggable, ideal for development
+  </Card>
+</CardGroup>
+
+## Headless Mode (Default)
+
+Chrome runs **without a visible window**. All interactions happen via API.
+
+### Starting Headless Instance
+
+```bash
+# CLI (headless is default)
+pinchtab instance start
+
+# API (explicit)
+curl -X POST http://localhost:9867/instances/start \
+  -H "Content-Type: application/json" \
+  -d '{"mode": "headless"}'
+```
+
+**Response:**
+```json
+{
+  "id": "inst_0a89a5bb",
+  "port": "9868",
+  "headless": true,
+  "status": "starting"
+}
+```
+
+### Headless Characteristics
+
+✅ **Advantages:**
+- **No UI overhead** — No window rendering, faster operations
+- **Lightweight** — Lower CPU/memory usage (50-70% of headed)
+- **Scriptable** — Perfect for automation, CI/CD, unattended workflows
+- **Remote-friendly** — Works over SSH, Docker, cloud servers
+- **Scalable** — Run 10+ instances on modest hardware
+
+❌ **Disadvantages:**
+- **No visual feedback** — Can't see what's happening
+- **Harder to debug** — Must rely on screenshots/logs
+- **Different rendering** — Some sites detect headless mode
+
+### Headless Use Cases
+
+<CardGroup cols={2}>
+  <Card title="Production Automation" icon="robot">
+    AI agents, form filling, data extraction
+  </Card>
+  <Card title="CI/CD Pipelines" icon="code-branch">
+    Testing, scraping, report generation
+  </Card>
+  <Card title="Cloud Deployment" icon="cloud">
+    VPS, Lambda, container orchestration
+  </Card>
+  <Card title="Batch Processing" icon="list">
+    Long-running tasks, scheduled jobs
+  </Card>
+</CardGroup>
+
+## Headed Mode
+
+Chrome runs **with a visible window** that you can see and interact with.
+
+### Starting Headed Instance
+
+```bash
+# CLI
+pinchtab instance start --mode headed
+
+# API
+curl -X POST http://localhost:9867/instances/start \
+  -d '{"mode": "headed"}'
+```
+
+**Response:**
+```json
+{
+  "id": "inst_1b9a5dcc",
+  "port": "9869",
+  "headless": false,
+  "status": "starting"
+}
+```
+
+### Headed Characteristics
+
+✅ **Advantages:**
+- **Visual feedback** — See exactly what's happening in real-time
+- **Easy debugging** — Watch browser, inspect elements, debug flows
+- **Interactive** — Manually click, type, scroll in window
+- **Development-friendly** — Perfect for testing and prototyping
+- **Realistic** — Harder for sites to detect as bot
+
+❌ **Disadvantages:**
+- **Slower** — Window rendering adds 2-3x latency
+- **Requires display** — Needs X11/Wayland on Linux, native desktop on macOS/Windows
+- **Resource-heavy** — More CPU/memory for rendering
+- **Not scalable** — Limited by display server capacity
+
+### Headed Use Cases
+
+<CardGroup cols={2}>
+  <Card title="Development" icon="code">
+    Build and test automation scripts
+  </Card>
+  <Card title="Debugging" icon="bug">
+    Watch and modify behavior in real-time
+  </Card>
+  <Card title="Demonstrations" icon="presentation">
+    Show automation to stakeholders
+  </Card>
+  <Card title="Manual Collaboration" icon="users">
+    Human guides the automation
+  </Card>
+</CardGroup>
+
+## Side-by-Side Comparison
+
+| Aspect | Headless | Headed |
+|--------|----------|--------|
+| **Visibility** | ❌ Invisible | ✅ Visible window |
+| **Speed** | ✅ Fast | ❌ Slower (2-3x) |
+| **Resource usage** | ✅ Light | ❌ Heavy |
+| **Debugging** | ❌ Hard | ✅ Easy |
+| **Display required** | ❌ No | ✅ Yes |
+| **Automation** | ✅ Perfect | ⚠️ Can interact manually |
+| **CI/CD** | ✅ Ideal | ❌ Not practical |
+| **Development** | ⚠️ Possible | ✅ Recommended |
+| **Production** | ✅ Recommended | ❌ Not recommended |
+
+## When to Use Each
+
+### Use Headless For:
+
+- ✅ Production automation (scripts, agents, workflows)
+- ✅ CI/CD pipelines (GitHub Actions, GitLab CI)
+- ✅ Unattended execution (servers, containers, cloud)
+- ✅ High-throughput tasks (scraping 1000s of pages)
+- ✅ Cost-sensitive environments (minimize resources)
+- ✅ Long-running processes (24/7 automation)
+
+```bash
+# Production: headless instances
+for i in 1 2 3; do
+  pinchtab instance start --mode headless
+done
+
+# List all
+curl http://localhost:9867/instances | jq '.[] | {id, port, headless}'
+```
+
+### Use Headed For:
+
+- ✅ Local development (debugging scripts)
+- ✅ Testing automation behavior
+- ✅ Demonstrating workflows to humans
+- ✅ Prototyping and experimentation
+- ✅ Interactive debugging (pause and inspect)
+- ✅ Manual verification before production
+
+```bash
+# Development: headed instance
+pinchtab profile create dev
+pinchtab instance start --profileId dev --mode headed
+```
+
+## Display Requirements
+
+### macOS
+
+Native window system — headed instances work out of the box:
+
+```bash
+pinchtab instance start --mode headed
+# Browser window appears immediately
+```
+
+### Linux
+
+**Headless instances:** Work anywhere (no display needed)
+
+**Headed instances:** Require X11 or Wayland display server
+
+```bash
+# Check if display available
+echo $DISPLAY
+# :0 or :1 (good)
+# empty (no display — use headless)
+
+# Start headed instance
+DISPLAY=:0 pinchtab instance start --mode headed
+```
+
+### Windows
+
+Native window system — headed instances work out of the box:
+
+```bash
+pinchtab instance start --mode headed
+# Browser window appears
+```
+
+### Docker (Headless)
+
+Recommended approach:
+
+```dockerfile
+FROM pinchtab/pinchtab:latest
+CMD ["pinchtab"]
+```
+
+```bash
+# Run container
+docker run -d -p 9867:9867 pinchtab/pinchtab
+
+# Create headless instances
+curl -X POST http://localhost:9867/instances/start \
+  -d '{"mode":"headless"}'
+```
+
+### Docker (Headed - Advanced)
+
+Requires X11 forwarding:
+
+```bash
+# Allow X11 connections
+xhost +local:docker
+
+# Run with display forwarding
+docker run \
+  -e DISPLAY=$DISPLAY \
+  -v /tmp/.X11-unix:/tmp/.X11-unix:rw \
+  -p 9867:9867 \
+  pinchtab/pinchtab
+
+# Create headed instance
+curl -X POST http://localhost:9867/instances/start \
+  -d '{"mode":"headed"}'
+# Browser window appears on host
+```
+
+<Warning>
+Headed mode in Docker is complex and not recommended for production
+</Warning>
+
+## Development Workflow
+
+### Step 1: Debug with Headed
+
+```bash
+# Terminal 1: Start orchestrator
+pinchtab
+
+# Terminal 2: Create headed instance
+DEV=$(pinchtab instance start --mode headed | jq -r .id)
+
+# Terminal 3: Build automation
+curl -X POST http://localhost:9867/instances/$DEV/tabs/open \
+  -d '{"url":"https://example.com"}'
+
+# Watch browser window as you develop
+# Iterate until automation works correctly
+```
+
+### Step 2: Test with Headless
+
+```bash
+# Stop headed instance
+pinchtab instance stop $DEV
+
+# Create headless instance
+PROD=$(pinchtab instance start --mode headless | jq -r .id)
+
+# Run same automation
+curl -X POST http://localhost:9867/instances/$PROD/tabs/open \
+  -d '{"url":"https://example.com"}'
+
+# Verify it works without visual debugging
+```
+
+### Step 3: Deploy to Production
+
+```bash
+# Production: Always headless
+BRIDGE_HEADLESS=true pinchtab
+```
+
+## Performance Comparison
+
+### Speed Test
+
+```bash
+#!/bin/bash
+
+# Test headless
+start=$(date +%s%N)
+HEADLESS=$(pinchtab instance start --mode headless | jq -r .id)
+sleep 5  # Wait for Chrome init
+end=$(date +%s%N)
+headless_time=$(( (end - start) / 1000000 ))
+echo "Headless init: ${headless_time}ms"
+
+# Test headed
+start=$(date +%s%N)
+HEADED=$(pinchtab instance start --mode headed | jq -r .id)
+sleep 5  # Wait for Chrome init
+end=$(date +%s%N)
+headed_time=$(( (end - start) / 1000000 ))
+echo "Headed init: ${headed_time}ms"
+
+echo "Overhead: $((headed_time - headless_time))ms"
+# Typical: 2000-5000ms overhead for headed
+```
+
+### Resource Usage
+
+| Mode | CPU (idle) | Memory | Startup Time |
+|------|------------|--------|-------------|
+| Headless | 5-10% | 100-150 MB | 3-8 seconds |
+| Headed | 15-25% | 200-300 MB | 5-12 seconds |
+
+```go
+// Source: internal/orchestrator/orchestrator.go:107-116
+// Instance timeout configuration:
+// - Allows 60 seconds for operations
+// - Accounts for Chrome initialization (8-20s)
+// - Navigation timeout (up to 60s)
+client: &http.Client{Timeout: 60 * time.Second}
+```
+
+## Mixed Mode Setup
+
+Run both headless and headed instances simultaneously:
+
+```bash
+# Start orchestrator
+pinchtab
+
+# Production: Multiple headless instances
+for i in 1 2 3; do
+  curl -s -X POST http://localhost:9867/instances/start \
+    -d '{"mode":"headless"}'
+done
+
+# Development: One headed instance
+curl -s -X POST http://localhost:9867/instances/start \
+  -d '{"mode":"headed"}'
+
+# View all instances
+curl http://localhost:9867/instances | \
+  jq '.[] | {id, port, mode: (if .headless then "headless" else "headed" end)}'
+```
+
+**Output:**
+```json
+{"id":"inst_xxx","port":"9868","mode":"headless"}
+{"id":"inst_yyy","port":"9869","mode":"headless"}
+{"id":"inst_zzz","port":"9870","mode":"headless"}
+{"id":"inst_aaa","port":"9871","mode":"headed"}
+```
+
+## Dashboard Integration
+
+The dashboard shows mode for each instance:
+
+- **Headless:** No window, status badge only
+- **Headed:** Live browser window preview (if available)
+
+```bash
+# View in dashboard
+open http://localhost:9867/dashboard
+
+# Instances tab shows:
+# - Mode column (headless/headed)
+# - Visual indicator
+# - Window preview for headed instances
+```
+
+## Troubleshooting
+
+### Headed Instance Not Opening Window
+
+**Cause:** Display server not available
+
+**Solution:**
+```bash
+# Linux: Check DISPLAY
+echo $DISPLAY
+
+# If empty, use headless instead
+pinchtab instance start --mode headless
+
+# Or set up X11 forwarding
+ssh -X user@server
+```
+
+### Headed Instance Too Slow
+
+**Cause:** Window rendering overhead
+
+**Solution:**
+```bash
+# Use headless for production
+pinchtab instance start --mode headless
+
+# Use headed only for debugging
+```
+
+### Headless Instance But Need to Debug
+
+**Solution:** Use API operations to inspect:
+
+```bash
+# Get page structure
+curl http://localhost:9867/tabs/$TAB/snapshot | jq .
+
+# Take screenshot
+curl http://localhost:9867/tabs/$TAB/screenshot > page.png
+
+# Get page text
+curl http://localhost:9867/tabs/$TAB/text
+
+# Evaluate JavaScript
+curl -X POST http://localhost:9867/tabs/$TAB/evaluate \
+  -d '{"expression":"document.title"}'
+```
+
+## Best Practices
+
+### Default to Headless
+
+```bash
+# Production config
+BRIDGE_HEADLESS=true pinchtab
+```
+
+### Use Headed for Development Only
+
+```bash
+# Local development
+pinchtab instance start --mode headed
+
+# Production deployment
+pinchtab instance start --mode headless
+```
+
+### Test Both Modes
+
+```bash
+# Develop with headed
+DEV=$(pinchtab instance start --mode headed | jq -r .id)
+# ... build automation ...
+
+# Verify with headless
+PROD=$(pinchtab instance start --mode headless | jq -r .id)
+# ... run same automation ...
+# Ensure both work identically
+```
+
+### Minimize Headed Usage
+
+```bash
+# Start headed only when needed
+# Stop immediately when done
+pinchtab instance stop $HEADED_ID
+```
+
+## Next Steps
+
+<CardGroup cols={2}>
+  <Card title="Browser Instances" href="/features/instances" icon="browser">
+    Learn about instance lifecycle
+  </Card>
+  <Card title="Stealth Mode" href="/features/stealth-mode" icon="mask">
+    Bypass bot detection in headless
+  </Card>
+  <Card title="Docker Deployment" href="/guides/docker" icon="docker">
+    Run headless in containers
+  </Card>
+  <Card title="CI/CD Integration" href="/guides/ci-cd" icon="code-branch">
+    Automate with headless mode
+  </Card>
+</CardGroup>

@@ -1,0 +1,553 @@
+---
+title: 'Browser Profiles'
+description: 'Persistent browser state and session management'
+---
+
+Profiles are **browser user data directories** that store persistent browser state including cookies, local storage, browsing history, and extensions.
+
+## Overview
+
+A profile contains:
+- Cookies and session data
+- Local storage and IndexedDB
+- Browsing history
+- Cached resources
+- Saved passwords (if enabled)
+- Extensions and settings
+
+<Info>
+Profiles are identified by hash-based IDs: `prof_XXXXXXXX` derived from profile name
+</Info>
+
+## Profile Types
+
+### Named Profiles (Persistent)
+
+Created explicitly and persist across instance restarts:
+
+```bash
+# Create named profile
+pinchtab profile create work
+
+# Use with instance
+pinchtab instance start --profileId work
+```
+
+Stored in: `~/.pinchtab/profiles/prof_XXXXXXXX/`
+
+### Temporary Profiles (Auto-Generated)
+
+Created automatically when instance starts without a profile:
+
+```bash
+# Instance creates temp profile
+pinchtab instance start
+# Uses: "instance-temp-abc123"
+```
+
+<Warning>
+Temporary profiles are **deleted** when the instance stops. Use named profiles for persistent state.
+</Warning>
+
+## Creating Profiles
+
+### Basic Profile
+
+```bash
+# CLI
+pinchtab profile create my-profile
+
+# API
+curl -X POST http://localhost:9867/profiles \
+  -H "Content-Type: application/json" \
+  -d '{"name": "my-profile"}'
+```
+
+**Response:**
+```json
+{
+  "status": "created",
+  "id": "prof_9f86d081",
+  "name": "my-profile"
+}
+```
+
+### With Metadata
+
+```bash
+curl -X POST http://localhost:9867/profiles \
+  -d '{
+    "name": "alice-work",
+    "description": "Alice's work account",
+    "useWhen": "Production automation tasks"
+  }'
+```
+
+## Profile Structure
+
+```text
+~/.pinchtab/profiles/prof_9f86d081/
+├── Default/
+│   ├── Preferences          # Chrome settings
+│   ├── Cookies             # HTTP cookies
+│   ├── Cookies-journal
+│   ├── History             # Browsing history
+│   ├── Local Storage/
+│   ├── Session Storage/
+│   ├── Cache/              # Resource cache
+│   ├── Code Cache/
+│   └── ...
+├── profile.json            # PinchTab metadata
+└── .pinchtab-state/        # Instance state
+```
+
+```go
+// Source: internal/profiles/profiles.go:293-295
+// Profile directory creation:
+if err := os.MkdirAll(filepath.Join(dest, "Default"), 0755); err != nil {
+    return err
+}
+```
+
+## Listing Profiles
+
+```bash
+# CLI
+pinchtab profiles
+
+# API
+curl http://localhost:9867/profiles | jq .
+```
+
+**Response:**
+```json
+[
+  {
+    "id": "prof_278be873",
+    "name": "work",
+    "path": "/home/user/.pinchtab/profiles/prof_278be873",
+    "pathExists": true,
+    "created": "2026-03-01T05:21:38.274Z",
+    "diskUsage": 5242880,
+    "sizeMB": 5.0,
+    "running": false,
+    "temporary": false,
+    "source": "created",
+    "accountEmail": "alice@example.com",
+    "accountName": "Alice",
+    "hasAccount": true,
+    "description": "Work account profile",
+    "useWhen": "Production tasks"
+  }
+]
+```
+
+<Note>
+The API excludes temporary profiles by default. Only named profiles are returned.
+</Note>
+
+## Account Detection
+
+PinchTab automatically detects logged-in accounts:
+
+```go
+// Source: internal/profiles/identity.go:9-24
+// Reads from:
+// - Default/Preferences (account_info)
+// - Local State (profile.info_cache)
+//
+// Extracts:
+// - Email address
+// - Account name
+// - Chrome profile name
+func readChromeProfileIdentity(profileRoot string) (string, string, string, bool) {
+    chromeProfileName, lsEmail, lsName, lsHas := readLocalStateIdentity(...)
+    prefsEmail, prefsName, prefsHas := readPreferencesIdentity(...)
+    // ...
+}
+```
+
+**Example Detection:**
+
+```json
+{
+  "accountEmail": "alice@example.com",
+  "accountName": "Alice Cooper",
+  "chromeProfileName": "Profile 1",
+  "hasAccount": true
+}
+```
+
+## Using Profiles with Instances
+
+### By Profile ID
+
+```bash
+curl -X POST http://localhost:9867/instances/start \
+  -d '{"profileId": "prof_278be873"}'
+```
+
+### By Profile Name
+
+```bash
+curl -X POST http://localhost:9867/instances/start \
+  -d '{"profileId": "work"}'
+```
+
+<Tip>
+PinchTab resolves both profile IDs and names automatically
+</Tip>
+
+## Profile Operations
+
+### Import Existing Profile
+
+Import a Chrome profile from another location:
+
+```bash
+pinchtab profile import my-chrome ~/.config/google-chrome/Default
+```
+
+```go
+// Source: internal/profiles/profiles.go:223-264
+// Validates source directory has Chrome data:
+if _, err := os.Stat(filepath.Join(sourcePath, "Default")); err != nil {
+    return fmt.Errorf("source doesn't look like a Chrome user data dir")
+}
+
+// Copies entire directory:
+if err := copyDir(sourcePath, dest); err != nil {
+    return fmt.Errorf("copy failed: %w", err)
+}
+```
+
+### Reset Profile
+
+Clear cookies and cache while keeping profile:
+
+```bash
+pinchtab profile reset work
+```
+
+Removes:
+- Cookies and cookies journal
+- Session storage
+- Cache directories
+- Browsing history
+- Temporary files
+
+Preserves:
+- Profile metadata
+- Extensions
+- Bookmarks
+- Settings
+
+```go
+// Source: internal/profiles/profiles.go:329-357
+nukeDirs := []string{
+    "Default/Sessions",
+    "Default/Session Storage",
+    "Default/Cache",
+    "Default/Code Cache",
+    // ...
+}
+nukeFiles := []string{
+    "Default/Cookies",
+    "Default/History",
+    // ...
+}
+```
+
+### Delete Profile
+
+```bash
+# CLI
+pinchtab profile delete work
+
+# API
+curl -X DELETE http://localhost:9867/profiles/work
+```
+
+<Warning>
+Deletion is permanent and removes all profile data including cookies, history, and saved state.
+</Warning>
+
+### Update Metadata
+
+```bash
+curl -X PATCH http://localhost:9867/profiles/work \
+  -d '{
+    "description": "Updated description",
+    "useWhen": "New use case"
+  }'
+```
+
+## Common Workflows
+
+### Separate User Accounts
+
+```bash
+# Create profiles for each user
+pinchtab profile create alice
+pinchtab profile create bob
+
+# Start instances with different profiles
+INST_ALICE=$(curl -s -X POST http://localhost:9867/instances/start \
+  -d '{"profileId":"alice"}' | jq -r .id)
+
+INST_BOB=$(curl -s -X POST http://localhost:9867/instances/start \
+  -d '{"profileId":"bob"}' | jq -r .id)
+
+# Each instance has isolated cookies and sessions
+```
+
+<Steps>
+  <Step title="Create profiles">
+    One profile per user account
+  </Step>
+  <Step title="Start instances">
+    Each instance uses a different profile
+  </Step>
+  <Step title="Login once">
+    Credentials persist in profile
+  </Step>
+  <Step title="Reuse sessions">
+    Restart instances with same profiles
+  </Step>
+</Steps>
+
+### Login Once, Use Everywhere
+
+```bash
+# Create persistent profile
+pinchtab profile create work
+
+# Start instance and login
+INST=$(curl -s -X POST http://localhost:9867/instances/start \
+  -d '{"profileId":"work"}' | jq -r .id)
+
+# Navigate and login (manual or automated)
+curl -X POST http://localhost:9867/instances/$INST/tabs/open \
+  -d '{"url":"https://app.example.com/login"}'
+
+# ... perform login ...
+
+# Stop instance (profile preserved)
+curl -X POST http://localhost:9867/instances/$INST/stop
+
+# Later: Start new instance with same profile
+# Already logged in!
+INST2=$(curl -s -X POST http://localhost:9867/instances/start \
+  -d '{"profileId":"work"}' | jq -r .id)
+```
+
+### Development vs Production
+
+```bash
+# Dev profile (visible browser)
+pinchtab profile create dev
+pinchtab instance start --profileId dev --mode headed
+
+# Production profile (headless)
+pinchtab profile create prod  
+pinchtab instance start --profileId prod --mode headless
+```
+
+## Profile Security
+
+### Path Validation
+
+Profiles are validated to prevent path traversal attacks:
+
+```go
+// Source: internal/profiles/profiles.go:26-37
+func ValidateProfileName(name string) error {
+    if name == "" {
+        return fmt.Errorf("profile name cannot be empty")
+    }
+    if strings.Contains(name, "..") {
+        return fmt.Errorf("profile name cannot contain '..'")
+    }
+    if strings.ContainsAny(name, "/\\") {
+        return fmt.Errorf("profile name cannot contain '/' or '\\'")
+    }
+    return nil
+}
+```
+
+### Safe Profile Names
+
+✅ **Valid:**
+- `work`
+- `alice-dev`
+- `prod_profile_1`
+- `test2026`
+
+❌ **Invalid:**
+- `../etc/passwd` (path traversal)
+- `work/prod` (contains slash)
+- `..profile` (starts with ..)
+
+## Profile Disk Usage
+
+Profiles can grow large over time:
+
+```go
+// Source: internal/profiles/profiles.go:389-402
+func dirSizeMB(path string) float64 {
+    var total int64
+    _ = filepath.WalkDir(path, func(_ string, entry fs.DirEntry, err error) error {
+        if err != nil || entry.IsDir() {
+            return nil
+        }
+        info, err := entry.Info()
+        if err == nil {
+            total += info.Size()
+        }
+        return nil
+    })
+    return float64(total) / (1024 * 1024)
+}
+```
+
+### Monitor Usage
+
+```bash
+# View profile sizes
+curl http://localhost:9867/profiles | jq '.[] | {name, sizeMB}'
+```
+
+### Reduce Size
+
+```bash
+# Reset profile (clears cache/cookies)
+pinchtab profile reset work
+
+# Or delete unused profiles
+pinchtab profile delete old-profile
+```
+
+## Profile Metadata
+
+Metadata is stored in `profile.json`:
+
+```json
+{
+  "id": "prof_278be873",
+  "name": "work",
+  "description": "Work account profile",
+  "useWhen": "Production automation tasks"
+}
+```
+
+```go
+// Source: internal/profiles/identity.go:103-109
+func writeProfileMeta(profileDir string, meta ProfileMeta) error {
+    data, err := json.MarshalIndent(meta, "", "  ")
+    if err != nil {
+        return err
+    }
+    return os.WriteFile(filepath.Join(profileDir, "profile.json"), data, 0644)
+}
+```
+
+## Best Practices
+
+### Use Named Profiles for Production
+
+```bash
+# Good: Persistent profile
+pinchtab profile create prod
+pinchtab instance start --profileId prod
+
+# Bad: Temporary profile (lost on stop)
+pinchtab instance start
+```
+
+### Organize Profiles by Purpose
+
+```bash
+pinchtab profile create dev-testing
+pinchtab profile create staging-qa
+pinchtab profile create prod-automation
+pinchtab profile create demo-account
+```
+
+### Regular Cleanup
+
+```bash
+# List profiles sorted by size
+curl http://localhost:9867/profiles | \
+  jq 'sort_by(.sizeMB) | reverse | .[] | {name, sizeMB}'
+
+# Reset large profiles
+pinchtab profile reset dev-testing
+
+# Delete unused profiles
+pinchtab profile delete old-temp
+```
+
+### Backup Important Profiles
+
+```bash
+# Find profile path
+PROF_PATH=$(curl -s http://localhost:9867/profiles | \
+  jq -r '.[] | select(.name=="work") | .path')
+
+# Backup
+tar -czf work-profile-backup.tar.gz "$PROF_PATH"
+
+# Restore
+tar -xzf work-profile-backup.tar.gz -C ~/.pinchtab/profiles/
+```
+
+## Troubleshooting
+
+### Profile Not Found
+
+```bash
+# List all profiles
+pinchtab profiles
+
+# Check if name is correct
+curl http://localhost:9867/profiles | jq '.[] | .name'
+```
+
+### Corrupted Profile
+
+```bash
+# Reset profile to clean state
+pinchtab profile reset problematic-profile
+
+# Or delete and recreate
+pinchtab profile delete problematic-profile
+pinchtab profile create problematic-profile
+```
+
+### Profile Already in Use
+
+```bash
+# Check running instances
+curl http://localhost:9867/instances | \
+  jq '.[] | {id, profileName, status}'
+
+# Stop instance using the profile
+pinchtab instance stop inst_XXXXXXXX
+```
+
+## Next Steps
+
+<CardGroup cols={2}>
+  <Card title="Browser Instances" href="/features/instances" icon="browser">
+    Launch instances with profiles
+  </Card>
+  <Card title="Session Management" href="/guides/session-management" icon="key">
+    Manage login sessions and cookies
+  </Card>
+  <Card title="Profile API" href="/api-reference/profiles" icon="code">
+    Complete API reference
+  </Card>
+  <Card title="Multi-User Workflows" href="/guides/multi-user" icon="users">
+    Simulate multiple users
+  </Card>
+</CardGroup>

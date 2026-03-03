@@ -1,0 +1,630 @@
+---
+title: 'Action Commands'
+description: 'Interact with page elements using click, type, fill, and press commands'
+icon: 'hand-pointer'
+---
+
+# Action Commands
+
+Action commands interact with page elements. Elements are identified by reference IDs (`e1`, `e2`, etc.) from snapshot output.
+
+## Click
+
+Click an element:
+
+```bash
+pinchtab click <ref>
+```
+
+Example:
+```bash
+pinchtab click e5
+```
+
+Output:
+```json
+{
+  "kind": "click",
+  "ref": "e5",
+  "status": "success"
+}
+```
+
+### Click with Navigation Wait
+
+Wait for navigation after click (useful for links):
+
+```bash
+pinchtab click <ref> --wait-nav
+```
+
+Example:
+```bash
+pinchtab click e5 --wait-nav
+```
+
+This waits up to 1 second for navigation to start after the click.
+
+## Type
+
+Type text into an element (simulates keyboard input with events):
+
+```bash
+pinchtab type <ref> <text>
+```
+
+Example:
+```bash
+pinchtab type e12 "hello world"
+```
+
+Output:
+```json
+{
+  "kind": "type",
+  "ref": "e12",
+  "text": "hello world",
+  "status": "success"
+}
+```
+
+### Type Multi-Word Text
+
+Text with spaces is automatically joined:
+
+```bash
+pinchtab type e12 hello world from pinchtab
+# Types: "hello world from pinchtab"
+```
+
+Or quote the text:
+
+```bash
+pinchtab type e12 "hello world"
+```
+
+### Type Special Characters
+
+```bash
+pinchtab type e12 "user@example.com"
+pinchtab type e12 "password123!"
+pinchtab type e12 "Hello\nWorld"  # Newline (though press Enter is better)
+```
+
+## Fill
+
+Set input value directly without keyboard events (faster than `type`):
+
+```bash
+pinchtab fill <ref|selector> <text>
+```
+
+Examples:
+```bash
+# Fill by reference
+pinchtab fill e12 "value"
+
+# Fill by CSS selector
+pinchtab fill "#username" "admin"
+pinchtab fill "input[name='email']" "user@example.com"
+```
+
+Output:
+```json
+{
+  "kind": "fill",
+  "ref": "e12",
+  "text": "value",
+  "status": "success"
+}
+```
+
+### Fill vs Type
+
+<ParamField path="fill" type="command">
+  **Fast, no events** - Sets `element.value` directly. No `keydown`, `keyup`, `input` events. Use for simple form filling.
+</ParamField>
+
+<ParamField path="type" type="command">
+  **Realistic, with events** - Simulates actual typing with keyboard events. Use when page JavaScript listens for input events.
+</ParamField>
+
+Example comparison:
+
+```bash
+# Fast fill (no events)
+pinchtab fill e12 "hello world"
+
+# Realistic typing (triggers events)
+pinchtab type e12 "hello world"
+```
+
+## Press
+
+Press a key:
+
+```bash
+pinchtab press <key>
+```
+
+Common keys:
+
+```bash
+pinchtab press Enter
+pinchtab press Tab
+pinchtab press Escape
+pinchtab press ArrowDown
+pinchtab press ArrowUp
+pinchtab press ArrowLeft
+pinchtab press ArrowRight
+pinchtab press Backspace
+pinchtab press Delete
+pinchtab press Home
+pinchtab press End
+pinchtab press PageUp
+pinchtab press PageDown
+```
+
+Modifier keys:
+
+```bash
+# Control+A (select all)
+pinchtab press Control+a
+
+# Command+C (copy on Mac)
+pinchtab press Meta+c
+
+# Shift+Tab
+pinchtab press Shift+Tab
+```
+
+Output:
+```json
+{
+  "kind": "press",
+  "key": "Enter",
+  "status": "success"
+}
+```
+
+## Hover
+
+Hover over an element:
+
+```bash
+pinchtab hover <ref>
+```
+
+Example:
+```bash
+pinchtab hover e5
+```
+
+Useful for triggering tooltips, dropdowns, or hover effects:
+
+```bash
+# Hover to show dropdown
+pinchtab hover e5
+
+# Wait for dropdown to appear
+sleep 1
+
+# Snapshot to see dropdown items
+pinchtab snap -i
+```
+
+## Scroll
+
+Scroll the page:
+
+```bash
+pinchtab scroll <ref|direction|pixels>
+```
+
+Examples:
+
+```bash
+# Scroll to element
+pinchtab scroll e5
+
+# Scroll by direction
+pinchtab scroll down
+pinchtab scroll up
+pinchtab scroll left
+pinchtab scroll right
+
+# Scroll by pixels
+pinchtab scroll 500
+pinchtab scroll 1000
+```
+
+Output:
+```json
+{
+  "kind": "scroll",
+  "scrollY": 500,
+  "status": "success"
+}
+```
+
+## Select
+
+Select a dropdown option:
+
+```bash
+pinchtab select <ref> <value>
+```
+
+Example:
+```bash
+pinchtab select e5 option2
+```
+
+For `<select>` elements:
+
+```html
+<select>
+  <option value="option1">First</option>
+  <option value="option2">Second</option>
+  <option value="option3">Third</option>
+</select>
+```
+
+```bash
+# Select by value
+pinchtab select e5 option2
+```
+
+## Focus
+
+Focus an element:
+
+```bash
+pinchtab focus <ref>
+```
+
+Example:
+```bash
+pinchtab focus e12
+```
+
+Useful before typing:
+
+```bash
+pinchtab focus e12
+pinchtab type e12 "text"
+```
+
+## Element References
+
+Elements are identified by references from snapshot output:
+
+```bash
+pinchtab snap -i
+```
+
+Output:
+```json
+{
+  "elements": [
+    {"ref": "e1", "role": "button", "name": "Submit"},
+    {"ref": "e2", "role": "link", "name": "Home"},
+    {"ref": "e3", "role": "textbox", "name": "Search"}
+  ]
+}
+```
+
+Use references in actions:
+
+```bash
+pinchtab click e1      # Click "Submit" button
+pinchtab click e2      # Click "Home" link
+pinchtab type e3 query # Type in "Search" box
+```
+
+## Common Workflows
+
+### Form Filling
+
+```bash
+# Navigate to form
+pinchtab nav https://example.com/form
+
+# Get form structure
+pinchtab snap -i | jq '.elements[] | select(.role=="textbox")'
+
+# Fill form fields
+pinchtab fill e1 "John Doe"
+pinchtab fill e2 "john@example.com"
+pinchtab fill e3 "555-1234"
+
+# Submit
+pinchtab click e4
+```
+
+### Search Workflow
+
+```bash
+# Navigate
+pinchtab nav https://google.com
+
+# Find search box
+pinchtab snap -i | jq '.elements[] | select(.name | contains("Search"))'
+
+# Type search query
+pinchtab type e1 "pinchtab browser automation"
+
+# Submit
+pinchtab press Enter
+
+# Wait for results
+sleep 2
+
+# Capture results
+pinchtab snap -i
+```
+
+### Multi-Step Interaction
+
+```bash
+# Navigate
+pinchtab nav https://example.com
+
+# Click menu
+pinchtab click e5
+
+# Wait for menu
+sleep 1
+
+# Snapshot to see menu items
+pinchtab snap -i
+
+# Click menu item
+pinchtab click e12
+
+# Verify page changed
+pinchtab snap -d
+```
+
+### Element Discovery
+
+```bash
+# Get all interactive elements
+pinchtab snap -i -c
+
+# Find buttons
+pinchtab snap -i | jq '.elements[] | select(.role=="button")'
+
+# Find links containing "login"
+pinchtab snap -i | jq '.elements[] | select(.role=="link" and (.name | contains("Login")))'
+
+# Get element reference
+REF=$(pinchtab snap -i | jq -r '.elements[] | select(.name=="Submit") | .ref')
+echo "Submit button: $REF"
+
+# Click it
+pinchtab click $REF
+```
+
+## Tab-Scoped Actions
+
+Perform actions on specific tabs:
+
+```bash
+pinchtab tab click <tab-id> <ref>
+pinchtab tab type <tab-id> <ref> <text>
+pinchtab tab fill <tab-id> <ref> <text>
+pinchtab tab press <tab-id> <key>
+pinchtab tab hover <tab-id> <ref>
+pinchtab tab scroll <tab-id> <direction|pixels>
+pinchtab tab select <tab-id> <ref> <value>
+pinchtab tab focus <tab-id> <ref>
+```
+
+Example:
+```bash
+TAB=$(pinchtab tab new https://example.com | jq -r .tabId)
+pinchtab tab click $TAB e5
+pinchtab tab type $TAB e12 "text"
+```
+
+See [Tab Commands](/cli/tab) for details.
+
+## Action Suggestions
+
+After certain actions, the CLI suggests next steps:
+
+```bash
+pinchtab click e5
+```
+
+Output:
+```json
+{
+  "kind": "click",
+  "ref": "e5",
+  "status": "success"
+}
+
+💡 Action completed. To see results:
+  pinchtab snap              # See updated page
+  pinchtab screenshot         # Visual confirmation
+```
+
+## Error Handling
+
+### Element Not Found
+
+```bash
+pinchtab click e99
+```
+
+```json
+{
+  "error": "element not found: e99"
+}
+```
+
+Solution: Re-run snapshot to get current references:
+
+```bash
+pinchtab snap -i
+```
+
+### Element Not Interactable
+
+```
+element not interactable: covered by another element
+```
+
+Solution: Scroll to element first:
+
+```bash
+pinchtab scroll e5
+sleep 1
+pinchtab click e5
+```
+
+### Timeout
+
+```
+action timeout after 30s
+```
+
+Solution: Increase timeout:
+
+```bash
+export BRIDGE_TIMEOUT=60
+pinchtab
+```
+
+## Debugging Actions
+
+### Verify Element Exists
+
+```bash
+# Get element details
+pinchtab snap -i | jq '.elements[] | select(.ref=="e5")'
+```
+
+### Screenshot Before/After
+
+```bash
+# Before action
+pinchtab screenshot -o before.png
+
+# Perform action
+pinchtab click e5
+
+# After action
+sleep 1
+pinchtab screenshot -o after.png
+
+# Compare
+open before.png after.png
+```
+
+### Check Page Changes
+
+```bash
+# Snapshot before
+pinchtab snap -i > before.json
+
+# Perform action
+pinchtab click e5
+
+# Snapshot after (diff mode)
+pinchtab snap -d
+```
+
+## Advanced Examples
+
+### Conditional Actions
+
+```bash
+#!/bin/bash
+
+# Find login button
+LOGIN_REF=$(pinchtab snap -i | jq -r '.elements[] | select(.name | contains("Login")) | .ref' | head -1)
+
+if [ -n "$LOGIN_REF" ]; then
+  echo "Found login button: $LOGIN_REF"
+  pinchtab click $LOGIN_REF
+else
+  echo "Login button not found"
+  exit 1
+fi
+```
+
+### Form Fill Script
+
+```bash
+#!/bin/bash
+
+# Navigate to form
+pinchtab nav https://example.com/signup
+
+# Get form fields
+FIELDS=$(pinchtab snap -i | jq -r '.elements[] | select(.role=="textbox") | .ref')
+
+# Fill form
+echo "$FIELDS" | while read REF; do
+  NAME=$(pinchtab snap -i | jq -r ".elements[] | select(.ref==\"$REF\") | .name")
+  
+  case "$NAME" in
+    *"Name"*)
+      pinchtab fill $REF "John Doe"
+      ;;
+    *"Email"*)
+      pinchtab fill $REF "john@example.com"
+      ;;
+    *"Password"*)
+      pinchtab fill $REF "SecurePass123"
+      ;;
+  esac
+done
+
+# Submit
+SUBMIT=$(pinchtab snap -i | jq -r '.elements[] | select(.role=="button" and (.name | contains("Submit"))) | .ref')
+pinchtab click $SUBMIT
+```
+
+### Wait for Element
+
+```bash
+#!/bin/bash
+
+# Wait for element to appear (max 30 seconds)
+for i in {1..30}; do
+  REF=$(pinchtab snap -i | jq -r '.elements[] | select(.name=="Submit") | .ref' 2>/dev/null)
+  
+  if [ -n "$REF" ]; then
+    echo "Element appeared: $REF"
+    pinchtab click $REF
+    break
+  fi
+  
+  echo "Waiting for element... ($i/30)"
+  sleep 1
+done
+```
+
+## Next Steps
+
+<CardGroup cols={2}>
+  <Card title="Snapshot" icon="camera" href="/cli/snapshot">
+    Capture page structure to find element references
+  </Card>
+  
+  <Card title="Navigation" icon="compass" href="/cli/navigate">
+    Navigate to pages before interacting
+  </Card>
+  
+  <Card title="Tab Management" icon="window-restore" href="/cli/tab">
+    Perform actions on specific tabs
+  </Card>
+  
+  <Card title="Text Extraction" icon="file-text" href="/cli/text">
+    Extract text after actions
+  </Card>
+</CardGroup>

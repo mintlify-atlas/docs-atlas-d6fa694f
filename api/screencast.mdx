@@ -1,0 +1,402 @@
+---
+title: 'Screencast API'
+description: 'Live streaming of tab content'
+---
+
+## Overview
+
+The Screencast API provides real-time streaming of browser tab content as a series of JPEG frames. Use it for:
+
+- Live tab monitoring
+- Real-time debugging
+- Remote browser viewing
+- Video recording
+
+<Note>
+Screencast sends frames via Server-Sent Events (SSE). Connect with an EventSource client to receive the stream.
+</Note>
+
+## Start Screencast
+
+```http
+GET /screencast
+GET /screencast/tabs
+```
+
+### Single Tab Screencast
+
+Stream a specific tab:
+
+```bash
+curl -N "http://localhost:9867/screencast?tabId=tab_abc123"
+```
+
+### All Tabs Screencast
+
+Stream all tabs across all instances:
+
+```bash
+curl -N "http://localhost:9867/screencast/tabs"
+```
+
+<Note>
+Use `-N` flag with curl to disable buffering for streaming.
+</Note>
+
+---
+
+## Query Parameters
+
+<ParamField query="tabId" type="string">
+  Tab ID to stream (required for `/screencast`)
+</ParamField>
+
+<ParamField query="fps" type="integer" default="2">
+  Frames per second (1-10)
+</ParamField>
+
+<ParamField query="quality" type="integer" default="80">
+  JPEG quality (0-100)
+</ParamField>
+
+<ParamField query="maxWidth" type="integer" default="1280">
+  Maximum frame width in pixels
+</ParamField>
+
+---
+
+## Event Format
+
+Frames are sent as Server-Sent Events with base64-encoded JPEG data:
+
+```
+event: frame
+data: {"tabId":"tab_abc123","frame":"/9j/4AAQSkZJRgABAQEA...","timestamp":"2026-03-03T12:34:56.789Z"}
+
+event: frame
+data: {"tabId":"tab_abc123","frame":"/9j/4AAQSkZJRgABAQEA...","timestamp":"2026-03-03T12:34:57.289Z"}
+```
+
+### Event Fields
+
+<ResponseField name="tabId" type="string" required>
+  Tab ID that produced this frame
+</ResponseField>
+
+<ResponseField name="frame" type="string" required>
+  Base64-encoded JPEG image data
+</ResponseField>
+
+<ResponseField name="timestamp" type="string" required>
+  ISO 8601 timestamp when frame was captured
+</ResponseField>
+
+---
+
+## JavaScript Example
+
+```html
+<!DOCTYPE html>
+<html>
+<head>
+  <title>Tab Screencast Viewer</title>
+</head>
+<body>
+  <h1>Live Tab Stream</h1>
+  <img id="stream" style="max-width:100%;">
+  
+  <script>
+    const tabId = 'tab_abc123';
+    const source = new EventSource(
+      `http://localhost:9867/screencast?tabId=${tabId}&fps=5&quality=85`
+    );
+    
+    const img = document.getElementById('stream');
+    
+    source.addEventListener('frame', (event) => {
+      const data = JSON.parse(event.data);
+      img.src = 'data:image/jpeg;base64,' + data.frame;
+    });
+    
+    source.addEventListener('error', (error) => {
+      console.error('Stream error:', error);
+      source.close();
+    });
+  </script>
+</body>
+</html>
+```
+
+---
+
+## Python Example
+
+```python
+import requests
+import base64
+import json
+from PIL import Image
+from io import BytesIO
+
+def stream_tab(tab_id, fps=2, quality=80):
+    """Stream tab screencast and display frames"""
+    url = f"http://localhost:9867/screencast"
+    params = {
+        "tabId": tab_id,
+        "fps": fps,
+        "quality": quality
+    }
+    
+    with requests.get(url, params=params, stream=True) as resp:
+        for line in resp.iter_lines():
+            if line.startswith(b'data: '):
+                data = json.loads(line[6:])
+                
+                # Decode base64 frame
+                frame_data = base64.b64decode(data['frame'])
+                
+                # Display or process frame
+                img = Image.open(BytesIO(frame_data))
+                print(f"Frame from {data['tabId']} at {data['timestamp']}")
+                # img.show()  # Display frame
+                
+                # Or save frame
+                # img.save(f"frame_{data['timestamp']}.jpg")
+
+# Start streaming
+stream_tab("tab_abc123", fps=3, quality=85)
+```
+
+---
+
+## Record to Video
+
+```python
+import requests
+import base64
+import json
+import cv2
+import numpy as np
+
+def record_screencast(tab_id, output_file, duration_seconds=30, fps=5):
+    """Record tab screencast to video file"""
+    url = f"http://localhost:9867/screencast"
+    params = {"tabId": tab_id, "fps": fps, "quality": 90}
+    
+    writer = None
+    frame_count = 0
+    max_frames = duration_seconds * fps
+    
+    with requests.get(url, params=params, stream=True) as resp:
+        for line in resp.iter_lines():
+            if line.startswith(b'data: '):
+                data = json.loads(line[6:])
+                
+                # Decode frame
+                frame_bytes = base64.b64decode(data['frame'])
+                nparr = np.frombuffer(frame_bytes, np.uint8)
+                frame = cv2.imdecode(nparr, cv2.IMREAD_COLOR)
+                
+                # Initialize video writer
+                if writer is None:
+                    h, w = frame.shape[:2]
+                    fourcc = cv2.VideoWriter_fourcc(*'mp4v')
+                    writer = cv2.VideoWriter(output_file, fourcc, fps, (w, h))
+                
+                # Write frame
+                writer.write(frame)
+                frame_count += 1
+                print(f"Recorded frame {frame_count}/{max_frames}")
+                
+                if frame_count >= max_frames:
+                    break
+    
+    if writer:
+        writer.release()
+        print(f"Video saved to {output_file}")
+
+# Record 30 seconds of tab activity
+record_screencast("tab_abc123", "output.mp4", duration_seconds=30, fps=5)
+```
+
+---
+
+## Multi-Tab Monitoring
+
+```html
+<!DOCTYPE html>
+<html>
+<head>
+  <title>All Tabs Monitor</title>
+  <style>
+    .grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(300px, 1fr)); gap: 10px; }
+    .tab-view { border: 1px solid #ccc; padding: 10px; }
+    .tab-view img { width: 100%; height: auto; }
+  </style>
+</head>
+<body>
+  <h1>All Tabs Live Monitor</h1>
+  <div id="tabs" class="grid"></div>
+  
+  <script>
+    const source = new EventSource('http://localhost:9867/screencast/tabs?fps=2&quality=70');
+    const tabs = {};
+    
+    source.addEventListener('frame', (event) => {
+      const data = JSON.parse(event.data);
+      const tabId = data.tabId;
+      
+      // Create tab view if new
+      if (!tabs[tabId]) {
+        const div = document.createElement('div');
+        div.className = 'tab-view';
+        div.innerHTML = `
+          <h3>Tab: ${tabId}</h3>
+          <img id="img-${tabId}">
+        `;
+        document.getElementById('tabs').appendChild(div);
+        tabs[tabId] = div;
+      }
+      
+      // Update frame
+      document.getElementById(`img-${tabId}`).src = 
+        'data:image/jpeg;base64,' + data.frame;
+    });
+  </script>
+</body>
+</html>
+```
+
+---
+
+## FPS and Quality Trade-offs
+
+| FPS | Quality | Use Case |
+|-----|---------|----------|
+| **1-2** | 60-70 | Slow monitoring, low bandwidth |
+| **3-5** | 75-85 | General monitoring |
+| **8-10** | 85-95 | Smooth viewing, high bandwidth |
+
+<Tip>
+Higher FPS and quality increase bandwidth usage. Adjust based on your network and needs.
+</Tip>
+
+---
+
+## Error Handling
+
+### Tab Not Found (404)
+
+```bash
+curl -N "http://localhost:9867/screencast?tabId=nonexistent"
+```
+
+Returns error event and closes stream.
+
+### Connection Lost
+
+```javascript
+source.addEventListener('error', (error) => {
+  console.error('Stream error:', error);
+  
+  // Reconnect after delay
+  setTimeout(() => {
+    source = new EventSource(url);
+  }, 5000);
+});
+```
+
+---
+
+## Best Practices
+
+### Close Stream When Done
+
+```javascript
+const source = new EventSource(url);
+
+// Stop after 30 seconds
+setTimeout(() => {
+  source.close();
+  console.log('Stream closed');
+}, 30000);
+```
+
+### Handle Errors
+
+```javascript
+source.addEventListener('error', (error) => {
+  console.error('Stream error:', error);
+  source.close();
+  
+  // Optionally reconnect
+  if (shouldReconnect) {
+    setTimeout(() => {
+      startStream();
+    }, 5000);
+  }
+});
+```
+
+### Limit Frame Size
+
+```bash
+# Reduce bandwidth with smaller frames
+curl -N "http://localhost:9867/screencast?tabId=tab_abc123&maxWidth=800&quality=70"
+```
+
+---
+
+## Use Cases
+
+### Remote Debugging
+
+Monitor tab activity in real-time while developing:
+
+```python
+def monitor_tab(tab_id):
+    url = f"http://localhost:9867/screencast"
+    with requests.get(url, params={"tabId": tab_id, "fps": 3}, stream=True) as resp:
+        for line in resp.iter_lines():
+            if line.startswith(b'data: '):
+                data = json.loads(line[6:])
+                print(f"Frame at {data['timestamp']}")
+```
+
+### Automated Testing
+
+Record test execution:
+
+```python
+# Start test
+start_recording(tab_id, "test_recording.mp4")
+
+# Run test
+run_automated_test()
+
+# Stop recording
+stop_recording()
+```
+
+### Live Dashboards
+
+Display multiple tabs in a monitoring dashboard using the multi-tab stream.
+
+---
+
+## Next Steps
+
+<CardGroup cols={2}>
+  <Card title="Screenshots" icon="image" href="/api/screenshots">
+    Capture static screenshots
+  </Card>
+  <Card title="PDF Export" icon="file-pdf" href="/api/pdf">
+    Export pages as PDFs
+  </Card>
+  <Card title="Metrics" icon="chart-line" href="/api/metrics">
+    Monitor performance metrics
+  </Card>
+  <Card title="Tabs API" icon="window" href="/api/tabs">
+    Manage browser tabs
+  </Card>
+</CardGroup>

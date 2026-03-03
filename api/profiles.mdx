@@ -1,0 +1,628 @@
+---
+title: 'Profiles API'
+description: 'Manage browser profiles (Chrome user data directories)'
+---
+
+## Overview
+
+Profiles are Chrome user data directories that store:
+
+- Cookies and sessions
+- Browser history
+- Saved passwords
+- Extensions
+- Settings and preferences
+- Local storage
+
+Each profile is isolated and can be used across multiple instance launches.
+
+## List Profiles
+
+```http
+GET /profiles
+```
+
+<CodeGroup>
+```bash cURL
+curl http://localhost:9867/profiles | jq .
+```
+
+```python Python
+import requests
+profiles = requests.get("http://localhost:9867/profiles").json()
+for prof in profiles:
+    print(f"{prof['name']}: {prof['id']}")
+```
+
+```javascript JavaScript
+const resp = await fetch("http://localhost:9867/profiles");
+const profiles = await resp.json();
+profiles.forEach(p => console.log(`${p.name}: ${p.id}`));
+```
+</CodeGroup>
+
+### Query Parameters
+
+<ParamField query="all" type="boolean" default="false">
+  Include temporary (auto-generated) profiles
+</ParamField>
+
+### Response
+
+```json
+[
+  {
+    "id": "278be873adeb",
+    "name": "Pinchtab org",
+    "created": "2026-02-27T20:37:13.599Z",
+    "diskUsage": 534952089,
+    "source": "created",
+    "running": false,
+    "accountEmail": "admin@gi-ago.com",
+    "accountName": "Luigi Agosti",
+    "chromeProfileName": "Your Chrome",
+    "hasAccount": true,
+    "useWhen": "For gmail related to giago org",
+    "description": ""
+  }
+]
+```
+
+### Response Fields
+
+<ResponseField name="id" type="string" required>
+  Profile ID (hash format or name)
+</ResponseField>
+
+<ResponseField name="name" type="string" required>
+  Human-readable profile name
+</ResponseField>
+
+<ResponseField name="created" type="string" required>
+  ISO 8601 timestamp of profile creation
+</ResponseField>
+
+<ResponseField name="diskUsage" type="integer" required>
+  Disk space used in bytes
+</ResponseField>
+
+<ResponseField name="source" type="string" required>
+  Source: `created` (manual), `imported` (from Chrome), `temporary` (auto-generated)
+</ResponseField>
+
+<ResponseField name="running" type="boolean" required>
+  `true` if profile is currently in use by an instance
+</ResponseField>
+
+<ResponseField name="accountEmail" type="string">
+  Chrome account email if signed in
+</ResponseField>
+
+<ResponseField name="accountName" type="string">
+  Chrome account name if signed in
+</ResponseField>
+
+<ResponseField name="chromeProfileName" type="string">
+  Internal Chrome profile name
+</ResponseField>
+
+<ResponseField name="hasAccount" type="boolean">
+  `true` if profile has a Chrome account signed in
+</ResponseField>
+
+<ResponseField name="useWhen" type="string">
+  Description of when to use this profile (for AI agents)
+</ResponseField>
+
+<ResponseField name="description" type="string">
+  Profile description
+</ResponseField>
+
+---
+
+## Get Profile
+
+Retrieve details for a single profile.
+
+```http
+GET /profiles/{id}
+```
+
+```bash
+curl http://localhost:9867/profiles/278be873adeb | jq .
+```
+
+### Response (200 OK)
+
+```json
+{
+  "id": "278be873adeb",
+  "name": "Pinchtab org",
+  "created": "2026-02-27T20:37:13.599Z",
+  "diskUsage": 534952089,
+  "source": "created",
+  "running": false
+}
+```
+
+---
+
+## Create Profile
+
+Create a new browser profile.
+
+```http
+POST /profiles
+```
+
+<CodeGroup>
+```bash cURL (Minimal)
+curl -X POST http://localhost:9867/profiles \
+  -H "Content-Type: application/json" \
+  -d '{"name": "my-profile"}'
+```
+
+```bash cURL (Full)
+curl -X POST http://localhost:9867/profiles \
+  -H "Content-Type: application/json" \
+  -d '{
+    "name": "scraping-profile",
+    "description": "Used for production web scraping",
+    "useWhen": "When extracting data from e-commerce sites"
+  }'
+```
+
+```python Python
+import requests
+
+resp = requests.post("http://localhost:9867/profiles", json={
+    "name": "my-profile",
+    "description": "My custom profile",
+    "useWhen": "For testing purposes"
+})
+print(resp.json())
+```
+
+```javascript JavaScript
+const resp = await fetch("http://localhost:9867/profiles", {
+  method: "POST",
+  headers: { "Content-Type": "application/json" },
+  body: JSON.stringify({
+    name: "my-profile",
+    description: "My custom profile"
+  })
+});
+const profile = await resp.json();
+console.log(profile);
+```
+</CodeGroup>
+
+### Request Body
+
+<ParamField path="name" type="string" required>
+  Profile name (must be unique)
+</ParamField>
+
+<ParamField path="description" type="string">
+  Optional description
+</ParamField>
+
+<ParamField path="useWhen" type="string">
+  Guidance for when to use this profile (helpful for AI agents)
+</ParamField>
+
+### Response (201 Created)
+
+```json
+{
+  "status": "created",
+  "name": "my-profile"
+}
+```
+
+---
+
+## Update Profile
+
+Update profile metadata.
+
+```http
+PATCH /profiles/{id}
+```
+
+```bash
+curl -X PATCH http://localhost:9867/profiles/my-profile \
+  -H "Content-Type: application/json" \
+  -d '{
+    "description": "Updated description",
+    "useWhen": "Updated use case"
+  }'
+```
+
+### Request Body
+
+<ParamField path="description" type="string">
+  New description
+</ParamField>
+
+<ParamField path="useWhen" type="string">
+  New use case guidance
+</ParamField>
+
+### Response (200 OK)
+
+```json
+{
+  "status": "updated",
+  "id": "my-profile",
+  "name": "my-profile"
+}
+```
+
+---
+
+## Delete Profile
+
+Permanently delete a profile and all its data.
+
+```http
+DELETE /profiles/{id}
+```
+
+```bash
+curl -X DELETE http://localhost:9867/profiles/my-profile
+```
+
+### Response (200 OK)
+
+```json
+{
+  "status": "deleted",
+  "id": "my-profile",
+  "name": "my-profile"
+}
+```
+
+<Warning>
+Deletion is permanent and cannot be undone. All cookies, history, and settings will be lost.
+</Warning>
+
+---
+
+## Reset Profile
+
+Clear profile data (cookies, cache, history) without deleting the profile.
+
+```http
+POST /profiles/{id}/reset
+```
+
+```bash
+curl -X POST http://localhost:9867/profiles/my-profile/reset
+```
+
+### Response (200 OK)
+
+```json
+{
+  "status": "reset",
+  "id": "my-profile",
+  "name": "my-profile"
+}
+```
+
+### What Gets Cleared
+
+- Sessions
+- Session Storage
+- Cache
+- Code Cache
+- GPU Cache
+- Service Workers
+- Cookies
+- History
+- Visited Links
+
+<Note>
+Profile directory structure remains intact. You can re-login after reset.
+</Note>
+
+---
+
+## Import Profile
+
+Import an existing Chrome profile from your system.
+
+```http
+POST /profiles/import
+```
+
+```bash
+curl -X POST http://localhost:9867/profiles/import \
+  -H "Content-Type: application/json" \
+  -d '{
+    "name": "imported-chrome",
+    "sourcePath": "/Users/you/Library/Application Support/Google/Chrome/Default",
+    "description": "Imported from my Chrome browser",
+    "useWhen": "For existing Chrome accounts"
+  }'
+```
+
+### Request Body
+
+<ParamField path="name" type="string" required>
+  Name for the imported profile
+</ParamField>
+
+<ParamField path="sourcePath" type="string" required>
+  Path to Chrome profile directory
+</ParamField>
+
+<ParamField path="description" type="string">
+  Optional description
+</ParamField>
+
+<ParamField path="useWhen" type="string">
+  Optional use case guidance
+</ParamField>
+
+### Common Chrome Profile Paths
+
+**macOS:**
+```
+/Users/<username>/Library/Application Support/Google/Chrome/Default
+/Users/<username>/Library/Application Support/Google/Chrome/Profile 1
+```
+
+**Linux:**
+```
+~/.config/google-chrome/Default
+~/.config/google-chrome/Profile 1
+~/.config/chromium/Default
+```
+
+**Windows:**
+```
+C:\Users\<username>\AppData\Local\Google\Chrome\User Data\Default
+C:\Users\<username>\AppData\Local\Chromium\User Data\Default
+```
+
+### Response (201 Created)
+
+```json
+{
+  "status": "imported",
+  "name": "imported-chrome"
+}
+```
+
+---
+
+## Get Profile Logs
+
+Retrieve action history for a profile.
+
+```http
+GET /profiles/{id}/logs
+```
+
+```bash
+curl 'http://localhost:9867/profiles/my-profile/logs?limit=50' | jq .
+```
+
+### Query Parameters
+
+<ParamField query="limit" type="integer" default="100">
+  Maximum number of log entries to return
+</ParamField>
+
+### Response
+
+```json
+[
+  {
+    "timestamp": "2026-03-01T05:12:45Z",
+    "action": "navigate",
+    "url": "https://example.com"
+  },
+  {
+    "timestamp": "2026-03-01T05:12:50Z",
+    "action": "click",
+    "selector": "e5"
+  },
+  {
+    "timestamp": "2026-03-01T05:12:55Z",
+    "action": "type",
+    "text": "search query"
+  }
+]
+```
+
+---
+
+## Get Profile Analytics
+
+Get usage statistics for a profile.
+
+```http
+GET /profiles/{id}/analytics
+```
+
+```bash
+curl http://localhost:9867/profiles/my-profile/analytics | jq .
+```
+
+### Response
+
+```json
+{
+  "totalActions": 256,
+  "averageActionDuration": 2.5,
+  "topActions": {
+    "navigate": 128,
+    "click": 98,
+    "type": 30
+  },
+  "lastUsed": "2026-03-01T05:12:50Z",
+  "commonHosts": [
+    "example.com",
+    "google.com",
+    "github.com"
+  ],
+  "last24h": {
+    "actions": 50,
+    "uniqueHosts": 5
+  }
+}
+```
+
+---
+
+## Complete Workflow Example
+
+```python
+import requests
+
+BASE = "http://localhost:9867"
+
+# 1. Create profile
+resp = requests.post(f"{BASE}/profiles", json={
+    "name": "test-profile",
+    "description": "Test profile for automation"
+})
+print(f"Created: {resp.json()}")
+
+# 2. Update metadata
+requests.patch(f"{BASE}/profiles/test-profile", json={
+    "useWhen": "For testing automation scripts"
+})
+
+# 3. Use profile in instance
+inst = requests.post(f"{BASE}/instances/start", json={
+    "profileId": "test-profile",
+    "mode": "headed"
+}).json()
+
+print(f"Instance: {inst['id']}")
+
+# ... do work ...
+
+# 4. Stop instance
+requests.post(f"{BASE}/instances/{inst['id']}/stop")
+
+# 5. View analytics
+analytics = requests.get(f"{BASE}/profiles/test-profile/analytics").json()
+print(f"Total actions: {analytics['totalActions']}")
+
+# 6. Reset profile (clear cookies/history)
+requests.post(f"{BASE}/profiles/test-profile/reset")
+
+# 7. Delete when done
+# requests.delete(f"{BASE}/profiles/test-profile")
+```
+
+---
+
+## Best Practices
+
+### Profile Naming
+
+✅ **Good:**
+- `work-email`
+- `github-scraper`
+- `testing-v2`
+- `production-accounts`
+
+❌ **Avoid:**
+- Generic names: `test`, `temp`, `profile`
+- Very long names (>50 chars)
+- Special characters requiring URL encoding
+
+### Using Descriptions and UseWhen
+
+Include metadata for team collaboration and AI agent selection:
+
+```json
+{
+  "name": "github-automation",
+  "description": "For automated GitHub operations",
+  "useWhen": "When scheduled workflows need to access GitHub repos"
+}
+```
+
+### Profile Isolation
+
+Each profile is completely isolated:
+
+- Separate cookies and sessions
+- Independent browser cache
+- Isolated browser storage
+- No data sharing between profiles
+
+Use different profiles for:
+
+- Different user accounts
+- Different environments (dev/staging/prod)
+- Different projects
+- Security isolation
+
+---
+
+## Error Handling
+
+### Profile Already Exists (400)
+
+```bash
+curl -X POST $BASE/profiles -d '{"name":"existing-profile"}'
+```
+
+**Response:**
+```json
+{
+  "error": "profile \"existing-profile\" already exists",
+  "statusCode": 400
+}
+```
+
+### Profile Not Found (404)
+
+```bash
+curl $BASE/profiles/nonexistent
+```
+
+**Response:**
+```json
+{
+  "error": "profile \"nonexistent\" not found",
+  "code": "ERR_PROFILE_NOT_FOUND",
+  "statusCode": 404
+}
+```
+
+### Invalid Source Path (400)
+
+```bash
+curl -X POST $BASE/profiles/import \
+  -d '{"name":"imp","sourcePath":"/invalid/path"}'
+```
+
+**Response:**
+```json
+{
+  "error": "source path invalid: stat /invalid/path: no such file or directory",
+  "statusCode": 400
+}
+```
+
+---
+
+## Next Steps
+
+<CardGroup cols={2}>
+  <Card title="Instances API" icon="server" href="/api/instances">
+    Use profiles when starting instances
+  </Card>
+  <Card title="Tabs API" icon="window" href="/api/tabs">
+    Manage tabs within instances
+  </Card>
+</CardGroup>

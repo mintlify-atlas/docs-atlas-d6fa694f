@@ -1,0 +1,451 @@
+---
+title: 'Instances API'
+description: 'Create and manage browser instances'
+---
+
+## Overview
+
+Instances are running Chrome browser processes managed by PinchTab. Each instance:
+
+- Runs an independent Chrome process
+- Uses a specific profile (user data directory)
+- Can be **headed** (visible window) or **headless** (background)
+- Manages its own tabs
+- Has isolated cookies, history, and state
+
+## List Instances
+
+<CodeGroup>
+```bash cURL
+curl http://localhost:9867/instances | jq .
+```
+
+```python Python
+import requests
+instances = requests.get("http://localhost:9867/instances").json()
+print(f"Running instances: {len(instances)}")
+```
+
+```javascript JavaScript
+const resp = await fetch("http://localhost:9867/instances");
+const instances = await resp.json();
+console.log(`Running: ${instances.length}`);
+```
+</CodeGroup>
+
+### Response
+
+```json
+[
+  {
+    "id": "inst_0a89a5bb",
+    "profileId": "prof_278be873",
+    "profileName": "Pinchtab org",
+    "port": "9868",
+    "headless": true,
+    "status": "running",
+    "startTime": "2026-03-01T05:21:38.274Z"
+  }
+]
+```
+
+### Response Fields
+
+<ResponseField name="id" type="string" required>
+  Instance ID (format: `inst_XXXXXXXX`)
+</ResponseField>
+
+<ResponseField name="profileId" type="string" required>
+  Profile ID used by this instance
+</ResponseField>
+
+<ResponseField name="profileName" type="string" required>
+  Human-readable profile name
+</ResponseField>
+
+<ResponseField name="port" type="string" required>
+  Port number (as string)
+</ResponseField>
+
+<ResponseField name="headless" type="boolean" required>
+  `true` for headless mode, `false` for headed (visible window)
+</ResponseField>
+
+<ResponseField name="status" type="string" required>
+  Instance status: `starting`, `running`, `stopping`, `error`
+</ResponseField>
+
+<ResponseField name="startTime" type="string" required>
+  ISO 8601 timestamp when instance started
+</ResponseField>
+
+<ResponseField name="error" type="string">
+  Error message if status is `error`
+</ResponseField>
+
+---
+
+## Start Instance
+
+Start a new Chrome instance with optional profile, mode, and port.
+
+```http
+POST /instances/start
+```
+
+<CodeGroup>
+```bash cURL (Minimal)
+# Auto-allocates port, uses temporary profile, headless mode
+curl -X POST http://localhost:9867/instances/start \
+  -H "Content-Type: application/json" \
+  -d '{}'
+```
+
+```bash cURL (Full)
+curl -X POST http://localhost:9867/instances/start \
+  -H "Content-Type: application/json" \
+  -d '{
+    "profileId": "278be873adeb",
+    "mode": "headed",
+    "port": "9999"
+  }'
+```
+
+```python Python
+import requests
+
+resp = requests.post("http://localhost:9867/instances/start", json={
+    "profileId": "278be873adeb",
+    "mode": "headed",
+    "port": "9999"
+})
+instance = resp.json()
+print(f"Started: {instance['id']}")
+```
+
+```javascript JavaScript
+const resp = await fetch("http://localhost:9867/instances/start", {
+  method: "POST",
+  headers: { "Content-Type": "application/json" },
+  body: JSON.stringify({
+    profileId: "278be873adeb",
+    mode: "headed",
+    port: "9999"
+  })
+});
+const instance = await resp.json();
+console.log(`Started: ${instance.id}`);
+```
+</CodeGroup>
+
+### Request Body
+
+<ParamField path="profileId" type="string">
+  Profile ID or name. If omitted, creates a temporary profile.
+</ParamField>
+
+<ParamField path="mode" type="string" default="headless">
+  Browser mode: `"headed"` (visible window) or `"headless"` (background)
+</ParamField>
+
+<ParamField path="port" type="string">
+  Port number. If omitted, auto-allocated from available ports.
+</ParamField>
+
+### Response (201 Created)
+
+```json
+{
+  "id": "inst_ea2e747f",
+  "profileId": "prof_278be873",
+  "profileName": "Pinchtab org",
+  "port": "9868",
+  "headless": false,
+  "status": "starting",
+  "startTime": "2026-03-01T05:21:38.274Z"
+}
+```
+
+<Note>
+Status transitions from `starting` → `running` when Chrome is fully initialized.
+</Note>
+
+---
+
+## Get Instance Details
+
+```http
+GET /instances/{id}
+```
+
+```bash
+curl http://localhost:9867/instances/inst_ea2e747f | jq .
+```
+
+### Response (200 OK)
+
+```json
+{
+  "id": "inst_ea2e747f",
+  "profileId": "prof_278be873",
+  "profileName": "Pinchtab org",
+  "port": "9868",
+  "headless": false,
+  "status": "running",
+  "startTime": "2026-03-01T05:21:38.274Z"
+}
+```
+
+---
+
+## Stop Instance
+
+Gracefully shut down a running instance.
+
+```http
+POST /instances/{id}/stop
+```
+
+```bash
+curl -X POST http://localhost:9867/instances/inst_ea2e747f/stop
+```
+
+### Response (200 OK)
+
+```json
+{
+  "id": "inst_ea2e747f",
+  "status": "stopped"
+}
+```
+
+<Note>
+Stopping an instance closes all its tabs and terminates the Chrome process. The profile is preserved.
+</Note>
+
+---
+
+## Get Instance Logs
+
+Retrieve logs for debugging instance startup issues.
+
+```http
+GET /instances/{id}/logs
+```
+
+```bash
+curl http://localhost:9867/instances/inst_ea2e747f/logs
+```
+
+### Response (200 OK - Plain Text)
+
+```
+2026-03-01 05:21:38 INFO starting instance process id=inst_ea2e747f profile=Pinchtab org port=9868
+2026-03-01 05:21:40 INFO instance ready id=inst_ea2e747f
+```
+
+<Note>
+Logs are returned as plain text, not JSON.
+</Note>
+
+---
+
+## Complete Workflow Example
+
+```bash
+#!/bin/bash
+
+BASE="http://localhost:9867"
+
+# 1. Start instance (headed mode, auto port)
+echo "Starting instance..."
+INST=$(curl -s -X POST $BASE/instances/start \
+  -H "Content-Type: application/json" \
+  -d '{"mode":"headed"}' | jq -r '.id')
+
+echo "Instance: $INST"
+
+# 2. Wait for instance to be ready
+sleep 2
+
+# 3. Check status
+STATUS=$(curl -s $BASE/instances/$INST | jq -r '.status')
+echo "Status: $STATUS"
+
+# 4. Get logs
+echo -e "\nInstance logs:"
+curl -s $BASE/instances/$INST/logs | tail -5
+
+# 5. List all instances
+echo -e "\nAll instances:"
+curl -s $BASE/instances | jq '.[] | {id, port, status}'
+
+# 6. Stop instance
+echo -e "\nStopping instance..."
+curl -s -X POST $BASE/instances/$INST/stop | jq .
+
+echo "Done"
+```
+
+---
+
+## Instance Status Values
+
+| Status | Description |
+|--------|-------------|
+| `starting` | Instance process spawning, Chrome initializing |
+| `running` | Instance healthy and ready to accept commands |
+| `error` | Instance failed to start |
+| `stopping` | Instance is shutting down |
+| `stopped` | Instance has been terminated |
+
+---
+
+## Error Handling
+
+### Profile Not Found (404)
+
+```bash
+curl -X POST http://localhost:9867/instances/start \
+  -d '{"profileId":"nonexistent"}'
+```
+
+**Response:**
+```json
+{
+  "error": "profile \"nonexistent\" not found",
+  "statusCode": 404
+}
+```
+
+### Port Already in Use (409)
+
+```bash
+curl -X POST http://localhost:9867/instances/start \
+  -d '{"port":"9867"}'
+```
+
+**Response:**
+```json
+{
+  "error": "port 9867 already in use",
+  "statusCode": 409
+}
+```
+
+### Instance Not Found (404)
+
+```bash
+curl http://localhost:9867/instances/nonexistent/logs
+```
+
+**Response:**
+```json
+{
+  "error": "instance not found",
+  "statusCode": 404
+}
+```
+
+---
+
+## Best Practices
+
+### Port Management
+
+```bash
+# Let PinchTab auto-allocate ports (recommended)
+curl -X POST $BASE/instances/start -d '{}'
+
+# Or manually specify if needed
+curl -X POST $BASE/instances/start -d '{"port":"9999"}'
+```
+
+### Profile Selection
+
+<Tip>
+Use named profiles to preserve state across instance restarts:
+</Tip>
+
+```bash
+# With profile (state persists)
+curl -X POST $BASE/instances/start \
+  -d '{"profileId":"my-profile"}'
+
+# Temporary profile (good for isolated testing)
+curl -X POST $BASE/instances/start -d '{}'
+```
+
+### Cleanup
+
+Always stop instances when done:
+
+```bash
+# Stop specific instance
+curl -X POST $BASE/instances/$INST_ID/stop
+
+# Stop all instances (shell script)
+for id in $(curl -s $BASE/instances | jq -r '.[].id'); do
+  curl -s -X POST $BASE/instances/$id/stop
+done
+```
+
+---
+
+## Python Integration Example
+
+```python
+import requests
+import time
+
+BASE = "http://localhost:9867"
+
+class PinchTabInstance:
+    def __init__(self, profile_id=None, mode="headless"):
+        resp = requests.post(f"{BASE}/instances/start", json={
+            "profileId": profile_id,
+            "mode": mode
+        })
+        data = resp.json()
+        self.id = data["id"]
+        self.port = data["port"]
+        
+        # Wait for ready
+        time.sleep(2)
+    
+    def status(self):
+        resp = requests.get(f"{BASE}/instances/{self.id}")
+        return resp.json()["status"]
+    
+    def logs(self):
+        resp = requests.get(f"{BASE}/instances/{self.id}/logs")
+        return resp.text
+    
+    def stop(self):
+        requests.post(f"{BASE}/instances/{self.id}/stop")
+
+# Usage
+instance = PinchTabInstance(mode="headed")
+print(f"Instance: {instance.id}")
+print(f"Status: {instance.status()}")
+instance.stop()
+```
+
+---
+
+## Next Steps
+
+<CardGroup cols={2}>
+  <Card title="Profiles API" icon="user" href="/api/profiles">
+    Manage browser profiles for instances
+  </Card>
+  <Card title="Tabs API" icon="window" href="/api/tabs">
+    List and manage tabs within instances
+  </Card>
+  <Card title="Navigation" icon="compass" href="/api/navigation">
+    Navigate tabs to URLs
+  </Card>
+  <Card title="Actions API" icon="hand-pointer" href="/api/actions">
+    Automate browser interactions
+  </Card>
+</CardGroup>
