@@ -1,0 +1,170 @@
+{
+  "projectType": "saas",
+  "projectName": "PinchTab",
+  "projectDescription": "High-performance browser automation bridge and multi-instance orchestrator with advanced stealth injection and real-time dashboard.",
+  "theme": "aspen",
+  "primaryColor": "#6366F1",
+  "lightColor": "#818CF8",
+  "darkColor": "#4F46E5",
+  "navigation": {
+    "tabs": [
+      {
+        "tab": "Documentation",
+        "groups": [
+          {
+            "group": "Overview",
+            "pages": [
+              "introduction",
+              "quickstart",
+              "core-concepts"
+            ]
+          },
+          {
+            "group": "Installation",
+            "pages": [
+              "installation/install",
+              "installation/docker",
+              "installation/npm",
+              "installation/build-from-source"
+            ]
+          },
+          {
+            "group": "Core Features",
+            "pages": [
+              "features/instances",
+              "features/profiles",
+              "features/tabs",
+              "features/dashboard",
+              "features/stealth-mode",
+              "features/headless-vs-headed"
+            ]
+          },
+          {
+            "group": "Guides",
+            "pages": [
+              "guides/multi-instance",
+              "guides/ai-agent-integration",
+              "guides/common-patterns",
+              "guides/memory-monitoring",
+              "guides/docker-deployment"
+            ]
+          },
+          {
+            "group": "Advanced",
+            "pages": [
+              "advanced/architecture",
+              "advanced/cdp-integration",
+              "advanced/configuration",
+              "advanced/troubleshooting"
+            ]
+          }
+        ]
+      },
+      {
+        "tab": "API Reference",
+        "groups": [
+          {
+            "group": "Getting Started",
+            "pages": [
+              "api/overview",
+              "api/authentication"
+            ]
+          },
+          {
+            "group": "Core APIs",
+            "pages": [
+              "api/instances",
+              "api/profiles",
+              "api/tabs"
+            ]
+          },
+          {
+            "group": "Browser Operations",
+            "pages": [
+              "api/navigation",
+              "api/actions",
+              "api/snapshot",
+              "api/evaluation"
+            ]
+          },
+          {
+            "group": "Media & Export",
+            "pages": [
+              "api/screenshots",
+              "api/pdf",
+              "api/screencast"
+            ]
+          },
+          {
+            "group": "Advanced",
+            "pages": [
+              "api/cookies",
+              "api/stealth",
+              "api/metrics",
+              "api/downloads"
+            ]
+          }
+        ]
+      },
+      {
+        "tab": "CLI Reference",
+        "groups": [
+          {
+            "group": "Overview",
+            "pages": [
+              "cli/overview",
+              "cli/configuration"
+            ]
+          },
+          {
+            "group": "Commands",
+            "pages": [
+              "cli/server",
+              "cli/instance",
+              "cli/profile",
+              "cli/tab",
+              "cli/navigate",
+              "cli/action",
+              "cli/snapshot"
+            ]
+          }
+        ]
+      }
+    ]
+  },
+  "keyFeatures": [
+    "Multi-instance browser orchestration",
+    "HTTP API and CLI interfaces",
+    "Token-efficient text extraction (800 tokens/page)",
+    "Persistent profiles with session management",
+    "Advanced stealth mode and fingerprint rotation",
+    "Real-time dashboard with live monitoring",
+    "Headless and headed browser modes",
+    "Chrome DevTools Protocol integration",
+    "WebSocket screencast streaming",
+    "Docker and npm distribution"
+  ],
+  "publicApiSurface": [
+    "POST /instances/launch - Create new browser instance",
+    "GET /instances - List all instances",
+    "GET /instances/{id} - Get instance details",
+    "DELETE /instances/{id} - Stop instance",
+    "POST /instances/{id}/tabs/open - Open new tab",
+    "GET /tabs/{id}/snapshot - Get accessibility tree",
+    "POST /tabs/{id}/navigate - Navigate to URL",
+    "POST /tabs/{id}/action - Execute user action (click, type, etc.)",
+    "GET /tabs/{id}/text - Extract page text",
+    "GET /tabs/{id}/screenshot - Capture screenshot",
+    "POST /tabs/{id}/evaluate - Execute JavaScript",
+    "GET /profiles - List browser profiles",
+    "POST /profiles - Create new profile",
+    "GET /tabs/{id}/cookies - Get cookies",
+    "GET /metrics - Get instance metrics",
+    "pinchtab - Start orchestrator server",
+    "pinchtab instance launch - CLI: Launch instance",
+    "pinchtab profile create - CLI: Create profile",
+    "pinchtab nav <url> - CLI: Navigate browser",
+    "pinchtab snap - CLI: Take snapshot",
+    "pinchtab click <ref> - CLI: Click element"
+  ]
+}
